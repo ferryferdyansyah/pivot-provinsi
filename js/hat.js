@@ -2,7 +2,7 @@
 // Dimuat SETELAH main.js. Syarat kolom di HAT: TIPEHAK, LUAS_HA, WADMKK (nama kabupaten/kota, sama dengan file utama).
 
 // ====== PENGATURAN: ubah di sini bila pembagian jenis hak berbeda ======
-const HAT_ADA = ['hak milik', 'hak pakai', 'hak guna bangunan', 'hak wakaf'];   // -> kolom "Ada HAT" (IV-18)
+const HAT_ADA = ['hak milik', 'hak pakai', 'hak guna bangunan', 'hak wakaf', 'hak guna usaha', 'hak pengelolaan'];   // -> kolom "Ada HAT" (IV-18)
 const HAT_BELUM = ['kosong', 'hak belum terdaftar'];                              // -> kolom "Belum Ada HAT" (IV-18)
 const HAT_GALAT = ['hak belum terdaftar'];                                        // -> Jumlah Bidang & Luas di III-9
 // =======================================================================
@@ -17,11 +17,19 @@ const HAT_GALAT = ['hak belum terdaftar'];                                      
         if (!ROWS.length) { st.textContent = 'Unggah file utama (ZIP shapefile) dulu, baru file HAT.'; return }
         st.textContent = 'Membaca HAT ' + file.name + '…'; Busy.show('Memuat HAT ' + file.name, ['Membaca shapefile HAT', 'Mengisi Tabel IV-18 & III-9']);
         try {
-            const zip = await JSZip.loadAsync(file);
-            const e = Object.values(zip.files).find(f => !f.dir && /\.dbf$/i.test(f.name));
-            if (!e) { st.textContent = 'File .dbf tidak ditemukan di dalam ZIP HAT.'; return }
-            const p = parseDBF(await e.async('arraybuffer')), cc = canonCols(p.cols, p.rows, ['TIPEHAK', 'LUASHA', 'WADMKK']);
-            const cols = cc.cols, rows = p.rows;   // LUAS_HA / luas_ha / LUASHA dianggap sama
+            let p;
+            if (/\.xlsx$/i.test(file.name)) {
+                // Excel: pakai pembaca yang sama dengan file utama. Baris dengan TIPEHAK+WADMKK sama otomatis dijumlah.
+                const X = await readXlsxStream(file, () => { }, { keep: ['TIPEHAK', 'WADMKK', 'LUASHA'], sum: ['LUASHA'] });
+                p = { cols: X.cols.slice(), rows: X.rows.map(a => { const o = {}; X.cols.forEach((c, i) => o[c] = a[i]); return o }) };
+            } else {
+                const zip = await JSZip.loadAsync(file);
+                const e = Object.values(zip.files).find(f => !f.dir && /\.dbf$/i.test(f.name));
+                if (!e) { st.textContent = 'File .dbf tidak ditemukan di dalam ZIP HAT.'; return }
+                p = parseDBF(await e.async('arraybuffer'));
+            }
+            const cc = canonCols(p.cols, p.rows, ['TIPEHAK', 'LUASHA', 'WADMKK']);
+            const cols = cc.cols, rows = p.rows;
             const miss = ['TIPEHAK', 'LUASHA', 'WADMKK'].filter(c => !cols.includes(c));
             if (miss.length) { st.textContent = 'Kolom HAT tidak ditemukan: ' + miss.join(', '); return }
 

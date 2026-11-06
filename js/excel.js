@@ -24,14 +24,15 @@ function sheetRaw(wb, name) {
 function sheetDef(wb, def, d, name) {
     const ws = wb.addWorksheet(name);
     if (!d) { ws.getCell(1, 1).value = '(Data tidak ditemukan)'; return }
-    const nk = d.kecs.length, cJ = nk + 3, cP = nk + 4;
+    const nk = d.kecs.length, cJ = nk + 3, cP = nk + 4, yo = def.yearOld, HR = yo ? 3 : 2;   // yo: baris header ke-3 = tahun lama tiap kabupaten/kota
     [[1, 1, 'No'], [1, 2, def.h], [1, 3, 'Luas di Tiap Kabupaten/Kota (Ha)'], [1, cJ, 'Jumlah (Ha)'], [1, cP, 'Persentase (%)']].forEach(([r, c, v]) => hdr(cell(ws, r, c, v)));
     d.kecs.forEach((k, j) => hdr(cell(ws, 2, 3 + j, k)));
-    ws.mergeCells(1, 1, 2, 1); ws.mergeCells(1, 2, 2, 2); ws.mergeCells(1, 3, 1, 2 + nk); ws.mergeCells(1, cJ, 2, cJ); ws.mergeCells(1, cP, 2, cP);
-    for (let c = 1; c <= cP; c++)for (let r = 1; r <= 2; r++)hdr(ws.getCell(r, c));
+    if (yo) d.kecs.forEach((k, j) => hdr(cell(ws, 3, 3 + j, 'Tahun ' + thLamaOf(k))));
+    ws.mergeCells(1, 1, HR, 1); ws.mergeCells(1, 2, HR, 2); ws.mergeCells(1, 3, 1, 2 + nk); ws.mergeCells(1, cJ, HR, cJ); ws.mergeCells(1, cP, HR, cP);
+    for (let c = 1; c <= cP; c++)for (let r = 1; r <= HR; r++)hdr(ws.getCell(r, c));
 
     // ===== RUMUS (baru) =====
-    const r1 = 3, rL = 2 + d.body.length, tr = rL + 1;                 // baris data pertama, terakhir, baris total
+    const r1 = HR + 1, rL = HR + d.body.length, tr = rL + 1;                 // baris data pertama, terakhir, baris total
     const fLuas = rawRng('LUASHA'), fKat = rawRng(def.f), fKec = rawRng('WADMKC');
     const L = colLetter, canF = !!(fLuas && fKat && fKec);
     d.body.forEach((b, i) => {

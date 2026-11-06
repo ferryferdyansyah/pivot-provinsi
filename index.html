@@ -44,9 +44,9 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
     <div class="card dz" id="drop2" role="button" tabindex="0" data-state="idle" data-locked="1">
       <span class="step-no">2</span><span class="opt">Opsional</span>
       <svg class="dz-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4V7zm8 4v10M4 7l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-      <b class="dz-t" data-t="ZIP HAT (hak atas tanah)">ZIP HAT (hak atas tanah)</b>
+      <b class="dz-t" data-t="ZIP HAT (hak atas tanah)">Input File Hak Atas Tanah (.xlsx)</b>
       <small class="dz-s" data-s="Kolom TIPEHAK, LUAS_HA, WADMKK. Unggah setelah file utama. Mengisi Tabel IV-18 dan III-9.">Kolom TIPEHAK, LUAS_HA, WADMKK. Unggah setelah file utama. Mengisi Tabel IV-18 dan III-9.</small>
-      <input type="file" id="file2" accept=".zip" hidden />
+      <input type="file" id="file2" accept=".xlsx,.zip" hidden />
     </div>
 
     <div class="card" id="settings">
@@ -54,6 +54,18 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
       <b class="set-t">Tahun penggunaan tanah</b>
       <!-- #tahunbox dan #tahunkab diisi oleh js/tahun.js -->
     </div>
+  </section>
+
+
+  <section class="card bps" id="bps">
+    <div class="bps-head">
+      <span class="step-no">4</span><span class="opt">Opsional</span>
+      <div><b>Isi data BPS dari gambar</b>
+        <p>Unggah, seret, atau tempel (Ctrl+V) screenshot tabel BPS. Angkanya dibaca otomatis, lalu Anda memilih mau diletakkan di Tabel III-1 sampai III-5. Unggah file Excel utama lebih dulu.</p></div>
+      <button id="bps-pick" class="ghost">Pilih gambar</button>
+      <input type="file" id="bps-file" accept="image/*" hidden />
+    </div>
+    <div id="bps-review" hidden></div>
   </section>
 
   <div id="statusbar" class="statusbar" data-kind="info">
@@ -107,8 +119,10 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
 <script src="js/extra.js"></script>
 <script src="js/sheets.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/bps-parse.js"></script>
 <script src="js/main.js"></script>
 <script src="js/hat.js"></script>
 <script src="js/tahun.js"></script>
+<script src="js/bps-image.js"></script>
 </body>
 </html>

@@ -2,7 +2,8 @@
 // Menampilkan tab, tabel, dan grafik di halaman web.
 
 function tableHTML(d, def) {
-    let h = `<table><tr><th rowspan=2>No</th><th rowspan=2>${def.h}</th><th colspan=${d.kecs.length}>Luas di Tiap Kabupaten/Kota (Ha)</th><th rowspan=2>Jumlah (Ha)</th><th rowspan=2>Persentase (%)</th></tr><tr>${d.kecs.map(k => `<th>${k}</th>`).join('')}</tr>`;
+    const yo = def.yearOld, rs = yo ? 3 : 2;   // yo: tabel penggunaan tanah LAMA -> baris ke-3 header berisi tahun lama tiap kabupaten/kota
+    let h = `<table><tr><th rowspan=${rs}>No</th><th rowspan=${rs}>${def.h}</th><th colspan=${d.kecs.length}>Luas di Tiap Kabupaten/Kota (Ha)</th><th rowspan=${rs}>Jumlah (Ha)</th><th rowspan=${rs}>Persentase (%)</th></tr><tr>${d.kecs.map(k => `<th>${k}</th>`).join('')}</tr>` + (yo ? `<tr>${d.kecs.map(k => `<th>Tahun ${thLamaOf(k)}</th>`).join('')}</tr>` : '');
     d.body.forEach((b, i) => h += `<tr><td class=c>${i + 1}</td><td>${b.c}</td>${b.v.map(v => `<td class=n>${fmt(v)}</td>`).join('')}<td class=n><b>${fmt(b.t)}</b></td><td class=n><b>${fmt(b.p)}</b></td></tr>`);
     h += `<tr class=tot><td colspan=2 class=c>Jumlah (Ha)</td>${d.kt.map(v => `<td class=n>${fmt(v)}</td>`).join('')}<td class=n>${fmt(d.T)}</td><td class=n>100.00</td></tr></table>`;
     return h;

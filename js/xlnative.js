@@ -123,27 +123,30 @@ const qs = x => '"' + String(x).replace(/"/g, '""') + '"';
 // SUMIFS luas dengan kriteria tambahan: extra = [[rentang, kriteria], ...]; crit = daftar kriteria teks untuk kolom status
 const _sumIfs = (fL, extra, rg, crit) => `SUMIFS(${fL}${extra.map(([r, c]) => `,${r},${c}`).join('')}${crit.map(c => `,${rg},"${c}"`).join('')})`;
 // Ketersediaan (kolom VNAME): idx 0 = Tersedia, 1 = Tidak Tersedia ("tidak"/"tdk"/"belum" = tidak tersedia). null jika kolom tak ada.
-function ketSumF(idx, extra = [], strict = false) {   // strict = cara hitung Tabel IV-11 (hanya awalan "tidak" yang dianggap Tidak Tersedia)
+function ketSumF(idx, extra = [], strict = false) {   // strict = cara hitung Tabel IV-11 (hanya awalan "tidak" yang dianggap Tidak Tersedia); idx 2 = Tidak Dapat Dianalisis
     const V = vCol(), fL = rawRng('LUASHA'), fV = V && rawRng(V); if (!fL || !fV) return null;
     const S = (...c) => _sumIfs(fL, extra, fV, c);
-    if (strict) return idx === 0 ? S('*tersedia*', '<>tidak*') : S('tidak*');
+    if (idx === 2) return S('*analis*');
+    if (strict) return idx === 0 ? S('*tersedia*', '<>tidak*') : S('tidak*', '<>*analis*');
     return idx === 0 ? S('*tersedia*', '<>*tidak*', '<>*tdk*', '<>*belum*')
-        : `${S('*tidak*')}+${S('*tdk*', '<>*tidak*')}+${S('*belum*', '<>*tidak*', '<>*tdk*')}`;
+        : `${S('*tidak*', '<>*analis*')}+${S('*tdk*', '<>*tidak*', '<>*analis*')}+${S('*belum*', '<>*tidak*', '<>*tdk*', '<>*analis*')}`;
 }
-// Kesesuaian (kolom KSPOLA): 'S' sesuai, 'M' mendukung, 'T' tidak sesuai
+// Kesesuaian (kolom KSPOLA): 'S' sesuai, 'M' mendukung, 'T' tidak sesuai, 'D' tidak dapat dianalisis
 function ksSumF(code, extra = []) {
     const K = ksCol(), fL = rawRng('LUASHA'), fK = K && rawRng(K); if (!fL || !fK) return null;
     const S = (...c) => _sumIfs(fL, extra, fK, c);
-    return code === 'T' ? `${S('*tidak*')}+${S('*tdk*', '<>*tidak*')}`
-        : code === 'M' ? S('*mendukung*', '<>*tidak*', '<>*tdk*')
-        : S('*sesuai*', '<>*tidak*', '<>*tdk*', '<>*mendukung*');
+    return code === 'D' ? S('*analis*')
+        : code === 'T' ? `${S('*tidak*', '<>*analis*')}+${S('*tdk*', '<>*tidak*', '<>*analis*')}`
+        : code === 'M' ? S('*mendukung*', '<>*tidak*', '<>*tdk*', '<>*analis*')
+        : S('*sesuai*', '<>*tidak*', '<>*tdk*', '<>*mendukung*', '<>*analis*');
 }
 
 // Jumlah BARIS (bukan luas) per kode kesesuaian, untuk sel matriks S/T/M
 function ksCntF(code, extra = []) {
     const K = ksCol(), fK = K && rawRng(K); if (!fK) return null;
     const C = (...c) => `COUNTIFS(${extra.map(([r, k]) => `${r},${k}`).concat(c.map(k => `${fK},"${k}"`)).join(',')})`;
-    return code === 'T' ? `${C('*tidak*')}+${C('*tdk*', '<>*tidak*')}`
-        : code === 'M' ? C('*mendukung*', '<>*tidak*', '<>*tdk*')
-        : C('*sesuai*', '<>*tidak*', '<>*tdk*', '<>*mendukung*');
+    return code === 'D' ? C('*analis*')
+        : code === 'T' ? `${C('*tidak*', '<>*analis*')}+${C('*tdk*', '<>*tidak*', '<>*analis*')}`
+        : code === 'M' ? C('*mendukung*', '<>*tidak*', '<>*tdk*', '<>*analis*')
+        : C('*sesuai*', '<>*tidak*', '<>*tdk*', '<>*mendukung*', '<>*analis*');
 }

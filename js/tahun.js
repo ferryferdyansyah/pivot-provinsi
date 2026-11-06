@@ -35,7 +35,7 @@
         kb.innerHTML = `<summary>Tahun penggunaan tanah lama per kabupaten/kota (opsional)</summary>
       <div class="tk-tools"><span>Isi semua dengan</span><input type="number" id="tk-all" min="1900" max="${TH_BARU - 1}" placeholder="${TH_LAMA}"><button id="tk-apply" type="button">Terapkan</button><button id="tk-reset" type="button">Reset (pakai default ${TH_LAMA})</button></div>
       <div class="tk-grid">${ks.map(k => `<label>${k}<input type="number" class="tk-in" data-k="${k.replace(/"/g, '&quot;')}" min="1900" max="${TH_BARU - 1}" placeholder="${TH_LAMA}" value="${TH_KAB[k] ?? ''}"></label>`).join('')}</div>
-      <small>Kosong = memakai "Tahun penggunaan tanah lama" di atas (${TH_LAMA}). Dipakai untuk laju perubahan per tahun (Tabel IV-6) dan judul tabel/grafik. Tersimpan di browser ini.</small>`;
+      <small>Kosong = memakai "Tahun penggunaan tanah lama" di atas (${TH_LAMA}). Dipakai untuk kolom "Tahun Lama - Tahun Baru" (Tabel IV-1), laju perubahan per tahun (Tabel IV-6), dan judul tabel/grafik. Tersimpan di browser ini.</small>`;
         kb.open = was;
     }
     const okYear = y => y >= 1900 && y < TH_BARU;

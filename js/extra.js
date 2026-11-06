@@ -21,6 +21,15 @@ const td = (v, c = '') => `<td class="${c}">${v}</td>`;
 const cvTag = ex => `<div class=cv><canvas width=${ex.w} height=${ex.h}></canvas></div>`;
 const kecOf = r => (COLS.includes('WADMKC') && r.WADMKC) || '-';
 const area = r => parseFloat(r.LUASHA) || 0;
+// "Tidak Dapat Dianalisis" (dikenali dari kata "dianalis...") ditampilkan sebagai kategori tersendiri di tabel yang memakai
+// kolom KSPOLA, VNAME, dan GQREKLAS; kolomnya hanya muncul bila nilai itu memang ada di data.
+const isTDA = v => /analis/i.test(String(v || ''));   // "Tidak Dapat Dianalisis", "...Dianalisa", "di analisis", dst
+const TDA_ALWAYS = true;   // true: kolom Tidak Dapat Dianalisis SELALU tampil di tabel KSPOLA & VNAME (walau luasnya 0); false: hanya bila ada di data
+const TDA_LABEL = 'Tidak Dapat Dianalisis', TDA_COLOR = '#7f7f7f';
+// kabupaten/kota sebuah baris (kunci tahun lama per kab/kota); jika kolom WADMKK tidak ada, pakai nama wilayah tabel
+const kabOfRow = r => ((r.WADMKK || '').trim()) || kecOf(r);
+// teks kolom "Tahun Lama - Tahun Baru", mis. "2015 - 2026"
+const thRangeTxt = kab => `${thLamaOf(kab)} - ${TH_BARU}`;
 
 // jumlah luas per kategori untuk 1 kolom -> {kategori: luas}, atau null jika kolom tidak ada/kosong
 function sumBy(f) {
@@ -63,23 +72,25 @@ const baseOpt = (title, a, legend) => ({
 // =====================================================================
 function build7() {
   if (!ROWS.length || !COLS.includes('GQREKLAS')) return null;
-  const m = {}; let any = false;
+  const m = {}, kb = {}; let any = false, tda = false;
   for (const r of ROWS) {
-    const g = (r.GQREKLAS || '').toLowerCase(); if (!g) continue; any = true;
-    const k = kecOf(r); m[k] ??= { b: 0, tb: 0 };
-    if (g.startsWith('tidak')) m[k].tb += area(r); else m[k].b += area(r);   // "Tidak Berubah" vs "Berubah"
+    const g = (r.GQREKLAS || '').trim().toLowerCase(); if (!g) continue; any = true;
+    const k = kecOf(r); m[k] ??= { b: 0, tb: 0, u: 0 }; kb[k] ??= kabOfRow(r);
+    if (isTDA(g)) { m[k].u += area(r); tda = true; }                       // "Tidak Dapat Dianalisis"
+    else if (g.startsWith('tidak')) m[k].tb += area(r); else m[k].b += area(r);   // "Tidak Berubah" vs "Berubah"
   }
   if (!any) return null;
-  const rows = Object.keys(m).sort().map(k => ({ k, b: m[k].b, tb: m[k].tb, t: m[k].b + m[k].tb }));
-  const tot = rows.reduce((a, r) => ({ b: a.b + r.b, tb: a.tb + r.tb, t: a.t + r.t }), { b: 0, tb: 0, t: 0 });
-  return { rows, tot };
+  // thn = "Tahun Lama - Tahun Baru" (tahun lama diambil per kabupaten/kota, lihat thLamaOf di config.js)
+  const rows = Object.keys(m).sort().map(k => ({ k, thn: thRangeTxt(kb[k]), b: m[k].b, tb: m[k].tb, u: m[k].u, t: m[k].b + m[k].tb + m[k].u }));
+  const tot = rows.reduce((a, r) => ({ b: a.b + r.b, tb: a.tb + r.tb, u: a.u + r.u, t: a.t + r.t }), { b: 0, tb: 0, u: 0, t: 0 });
+  return { rows, tot, tda };
 }
 const html7 = (d, ex) => {
-  let h = `<div class=wrap><div><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Perubahan Penggunaan Tanah', 'colspan=4')}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
-  <tr>${th('Berubah', 'colspan=2')}${th('Tidak Berubah', 'colspan=2')}</tr><tr>${['Luas (Ha)', 'Luas (%)', 'Luas (Ha)', 'Luas (%)'].map(t => th(t)).join('')}</tr>`;
-  d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.k)}${td(fmt(r.b), 'n')}${td(fmt(pc(r.b, r.t)), 'n')}${td(fmt(r.tb), 'n')}${td(fmt(pc(r.tb, r.t)), 'n')}${td(fmt(r.t), 'n')}</tr>`);
-  const t = d.tot;
-  h += `<tr class=tot><td colspan=2 class=c>Total</td>${td(fmt(t.b), 'n')}${td(fmt(pc(t.b, t.t)), 'n')}${td(fmt(t.tb), 'n')}${td(fmt(pc(t.tb, t.t)), 'n')}${td(fmt(t.t), 'n')}</tr></table></div>${cvTag(ex)}</div>`;
+  const cat = (r, p) => td(fd(r.b), 'n') + td(fd(pc(r.b, r.t)), 'n') + td(fd(r.tb), 'n') + td(fd(pc(r.tb, r.t)), 'n') + (d.tda ? td(fd(r.u), 'n') + td(fd(pc(r.u, r.t)), 'n') : '') + td(fd(r.t), 'n');
+  let h = `<div class=wrap><div><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Tahun Lama - Tahun Baru', 'rowspan=3')}${th('Perubahan Penggunaan Tanah', `colspan=${d.tda ? 6 : 4}`)}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
+  <tr>${th('Berubah', 'colspan=2')}${th('Tidak Berubah', 'colspan=2')}${d.tda ? th(TDA_LABEL, 'colspan=2') : ''}</tr><tr>${(d.tda ? [1, 2, 3] : [1, 2]).map(() => th('Luas (Ha)') + th('Luas (%)')).join('')}</tr>`;
+  d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.k)}${td(r.thn, 'c')}${cat(r)}</tr>`);
+  h += `<tr class=tot><td colspan=3 class=c>Total</td>${cat(d.tot)}</tr></table></div>${cvTag(ex)}</div>`;
   return h;
 };
 const chart7 = (cv, d, a) => new Chart(cv, {
@@ -87,41 +98,46 @@ const chart7 = (cv, d, a) => new Chart(cv, {
   data: {
     labels: d.rows.map(r => r.k), datasets: [
       { label: 'Berubah', data: d.rows.map(r => r.b), backgroundColor: '#ffc000' },
-      { label: 'Tidak Berubah', data: d.rows.map(r => r.tb), backgroundColor: NAVY }]
+      { label: 'Tidak Berubah', data: d.rows.map(r => r.tb), backgroundColor: NAVY }].concat(d.tda ? [{ label: TDA_LABEL, data: d.rows.map(r => r.u), backgroundColor: TDA_COLOR }] : [])
   },
   options: { ...baseOpt('PERUBAHAN PENGGUNAAN TANAH PER KECAMATAN TAHUN 2014-2026 (HA)', a, 'bottom'), scales: { y: { beginAtZero: true } } },
   plugins: [bgPlugin, multiVals]
 });
 function excel7(wb, ws, d, ex) {
-  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 1, 6, 'Perubahan Penggunaan Tanah');
-  H(ws, 2, 3, 2, 4, 'Berubah'); H(ws, 2, 5, 2, 6, 'Tidak Berubah'); H(ws, 1, 7, 3, 7, 'Jumlah (Ha)');
-  ['Luas (Ha)', 'Luas (%)', 'Luas (Ha)', 'Luas (%)'].forEach((t, i) => H(ws, 3, 3 + i, 3, 3 + i, t));
+  const nC = d.tda ? 3 : 2, cT = 4 + nC * 2, C = colLetter, TL = C(cT);   // kolom: 1 No, 2 Kab/Kota, 3 Tahun Lama - Tahun Baru, 4.. luas & %, terakhir Jumlah
+  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 3, 3, 'Tahun Lama - Tahun Baru'); H(ws, 1, 4, 1, cT - 1, 'Perubahan Penggunaan Tanah');
+  ['Berubah', 'Tidak Berubah'].concat(d.tda ? [TDA_LABEL] : []).forEach((t, i) => H(ws, 2, 4 + i * 2, 2, 5 + i * 2, t));
+  H(ws, 1, cT, 3, cT, 'Jumlah (Ha)');
+  for (let i = 0; i < nC * 2; i++) H(ws, 3, 4 + i, 3, 4 + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
   // ===== RUMUS =====
   const fL = rawRng('LUASHA'), fG = rawRng('GQREKLAS'), fK = rawRng('WADMKC'), canF = !!(fL && fG && fK);
   const r1 = 4, rL = 3 + d.rows.length, n = rL + 1;                 // baris data pertama, terakhir, total
+  const sum = (x) => Array.from({ length: nC }, (_, c) => `${C(4 + c * 2)}${x}`).join('+');
   d.rows.forEach((r, i) => {
-    const x = r1 + i, ok = canF && r.k !== '-';
-    cell(ws, x, 1, i + 1, { ctr: 1 }); cell(ws, x, 2, r.k);
-    // Berubah = semua baris GQREKLAS terisi yang BUKAN "Tidak...", Tidak Berubah = GQREKLAS diawali "Tidak"
-    cell(ws, x, 3, ok ? FX(`SUMIFS(${fL},${fK},$B${x},${fG},"<>",${fG},"<>Tidak*")`, r.b) : r.b, { num: 1 });
-    cell(ws, x, 4, FX(`IF($G${x}=0,0,C${x}/$G${x}*100)`, pc(r.b, r.t)), { num: 1 });
-    cell(ws, x, 5, ok ? FX(`SUMIFS(${fL},${fK},$B${x},${fG},"Tidak*")`, r.tb) : r.tb, { num: 1 });
-    cell(ws, x, 6, FX(`IF($G${x}=0,0,E${x}/$G${x}*100)`, pc(r.tb, r.t)), { num: 1 });
-    cell(ws, x, 7, FX(`C${x}+E${x}`, r.t), { num: 1, b: 1 });
+    const x = r1 + i, ok = canF && r.k !== '-', V = [r.b, r.tb, r.u];
+    cell(ws, x, 1, i + 1, { ctr: 1 }); cell(ws, x, 2, r.k); cell(ws, x, 3, r.thn, { ctr: 1 });
+    // Berubah = baris GQREKLAS terisi yang BUKAN "Tidak..." dan bukan "...dianalisis"; Tidak Berubah = diawali "Tidak" (bukan "...dianalisis"); Tidak Dapat Dianalisis = mengandung "dianalis"
+    const F = [`SUMIFS(${fL},${fK},$B${x},${fG},"<>",${fG},"<>Tidak*",${fG},"<>*analis*")`, `SUMIFS(${fL},${fK},$B${x},${fG},"Tidak*",${fG},"<>*analis*")`, `SUMIFS(${fL},${fK},$B${x},${fG},"*analis*")`];
+    for (let c = 0; c < nC; c++) {
+      cell(ws, x, 4 + c * 2, ok ? FX(F[c], V[c]) : V[c], { num: 1 });
+      cell(ws, x, 5 + c * 2, FX(`IF($${TL}${x}=0,0,${C(4 + c * 2)}${x}/$${TL}${x}*100)`, pc(V[c], r.t)), { num: 1 });
+    }
+    cell(ws, x, cT, FX(sum(x), r.t), { num: 1, b: 1 });
   });
-  const t = d.tot;
-  cell(ws, n, 1, 'Total', { b: 1, ctr: 1 }); cell(ws, n, 2, null); ws.mergeCells(n, 1, n, 2);
-  cell(ws, n, 3, FX(`SUM(C${r1}:C${rL})`, t.b), { num: 1, b: 1 });
-  cell(ws, n, 4, FX(`IF($G${n}=0,0,C${n}/$G${n}*100)`, pc(t.b, t.t)), { num: 1, b: 1 });
-  cell(ws, n, 5, FX(`SUM(E${r1}:E${rL})`, t.tb), { num: 1, b: 1 });
-  cell(ws, n, 6, FX(`IF($G${n}=0,0,E${n}/$G${n}*100)`, pc(t.tb, t.t)), { num: 1, b: 1 });
-  cell(ws, n, 7, FX(`SUM(G${r1}:G${rL})`, t.t), { num: 1, b: 1 });
-  ws.getColumn(1).width = 6; ws.getColumn(2).width = 24; for (let c = 3; c <= 7; c++) ws.getColumn(c).width = 14;
+  const t = d.tot, TV = [t.b, t.tb, t.u];
+  cell(ws, n, 1, 'Total', { b: 1, ctr: 1 }); cell(ws, n, 2, null); cell(ws, n, 3, null); ws.mergeCells(n, 1, n, 3);
+  for (let c = 0; c < nC; c++) {
+    cell(ws, n, 4 + c * 2, FX(`SUM(${C(4 + c * 2)}${r1}:${C(4 + c * 2)}${rL})`, TV[c]), { num: 1, b: 1 });
+    cell(ws, n, 5 + c * 2, FX(`IF($${TL}${n}=0,0,${C(4 + c * 2)}${n}/$${TL}${n}*100)`, pc(TV[c], t.t)), { num: 1, b: 1 });
+  }
+  cell(ws, n, cT, FX(`SUM(${TL}${r1}:${TL}${rL})`, t.t), { num: 1, b: 1 });
+  ws.getColumn(1).width = 6; ws.getColumn(2).width = 24; ws.getColumn(3).width = 20; for (let c = 4; c <= cT; c++) ws.getColumn(c).width = 14;
   // ===== GRAFIK ASLI =====
-  const q = `'${ws.name.replace(/'/g, "''")}'!`, R = c => `${q}$${c}$${r1}:$${c}$${rL}`;
-  addXChart({ sheet: ws.name, type: 'bar', title: yr('PERUBAHAN PENGGUNAAN TANAH PER KECAMATAN TAHUN 2014-2026 (HA)'), legend: 'b', from: { col: 8, row: 0 }, ext: { w: ex.w, h: ex.h },
-    series: [{ name: 'Berubah', cat: R('B'), catVals: d.rows.map(r => r.k), val: R('C'), vals: d.rows.map(r => r.b), color: '#ffc000' },
-             { name: 'Tidak Berubah', cat: R('B'), catVals: d.rows.map(r => r.k), val: R('E'), vals: d.rows.map(r => r.tb), color: NAVY }] });
+  const q = `'${ws.name.replace(/'/g, "''")}'!`, R = c => `${q}$${c}$${r1}:$${c}$${rL}`, cats = d.rows.map(r => r.k);
+  const series = [{ name: 'Berubah', cat: R('B'), catVals: cats, val: R(C(4)), vals: d.rows.map(r => r.b), color: '#ffc000' },
+                  { name: 'Tidak Berubah', cat: R('B'), catVals: cats, val: R(C(6)), vals: d.rows.map(r => r.tb), color: NAVY }];
+  if (d.tda) series.push({ name: TDA_LABEL, cat: R('B'), catVals: cats, val: R(C(8)), vals: d.rows.map(r => r.u), color: TDA_COLOR });
+  addXChart({ sheet: ws.name, type: 'bar', title: yr('PERUBAHAN PENGGUNAAN TANAH PER KECAMATAN TAHUN 2014-2026 (HA)'), legend: 'b', from: { col: cT + 1, row: 0 }, ext: { w: ex.w, h: ex.h }, series });
 }
 
 // =====================================================================
@@ -602,26 +618,26 @@ function excel12(wb, ws, d) {
 function build11() {
   const VCOL = COLS.find(c => c.toUpperCase() === 'VNAME');   // cocokkan tanpa peduli huruf besar/kecil
   if (!ROWS.length || ![VCOL, POLA_COL].every(c => COLS.includes(c))) return null;
-  const m = {}; let any = false;
+  const m = {}; let any = false, tda = false;
   for (const r of ROWS) {
     const p = (r[POLA_COL] || '').trim(), s = norm(r[VCOL]); if (!p || !s) continue;
-    const i = s.startsWith('tidak') ? 1 : s.includes('tersedia') ? 0 : -1; if (i < 0) continue;   // 0 = Tersedia, 1 = Tidak Tersedia
+    const i = isTDA(s) ? 2 : s.startsWith('tidak') ? 1 : s.includes('tersedia') ? 0 : -1; if (i < 0) continue;   // 0 = Tersedia, 1 = Tidak Tersedia, 2 = Tidak Dapat Dianalisis
+    if (i === 2) tda = true;
     any = true; const k = kecOf(r);
-    m[k] ??= {}; m[k][p] ??= [0, 0]; m[k][p][i] += area(r);
+    m[k] ??= {}; m[k][p] ??= [0, 0, 0]; m[k][p][i] += area(r);
   }
   if (!any) return null;
-  const mk = (a, b) => { const t = a + b; return { a, b, t, pa: pc(a, t), pb: pc(b, t) }; };
   const by = (x, y) => x.localeCompare(y);
-  const kecs = Object.keys(m).sort().map(k => ({ k, rows: Object.keys(m[k]).sort(by).map(p => ({ p, ...mk(m[k][p][0], m[k][p][1]) })) }));
+  const kecs = Object.keys(m).sort().map(k => ({ k, rows: Object.keys(m[k]).sort(by).map(p => ({ p, ...ketMk(m[k][p][0], m[k][p][1], m[k][p][2]) })) }));
   const all = kecs.flatMap(kc => kc.rows);
-  return { kecs, tot: mk(sumArr(all.map(r => r.a)), sumArr(all.map(r => r.b))), wil: wilayah() };
+  return { kecs, tot: ketMk(sumArr(all.map(r => r.a)), sumArr(all.map(r => r.b)), sumArr(all.map(r => r.u))), wil: wilayah(), tda: TDA_ALWAYS || tda };
 }
 const html11 = d => {
   const top = 'style="vertical-align:top"';
-  let h = `<table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Pola Ruang RDTR/RTRW', 'rowspan=3')}${th('Ketersediaan Tanah', 'colspan=4')}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
-  <tr>${th('Tersedia', 'colspan=2')}${th('Tidak Tersedia', 'colspan=2')}</tr>
-  <tr>${th('Luas (Ha)')}${th('Luas (%)')}${th('Luas (Ha)')}${th('Luas (%)')}</tr>`;
-  const cells = r => `${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}${tdr(r.t)}`;
+  let h = `<table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Pola Ruang RDTR/RTRW', 'rowspan=3')}${th('Ketersediaan Tanah', `colspan=${d.tda ? 6 : 4}`)}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
+  <tr>${ketGrp(d.tda)}</tr>
+  <tr>${ketLuas(d.tda)}</tr>`;
+  const cells = r => ketCells(r, d.tda);
   d.kecs.forEach((kc, ki) => kc.rows.forEach((r, i) => {
     h += '<tr>' + (i === 0 ? `<td class=c rowspan=${kc.rows.length} ${top}>${ki + 1}</td><td rowspan=${kc.rows.length} ${top}>${kc.k}</td>` : '') + td(r.p) + cells(r) + '</tr>';
   }));
@@ -635,30 +651,58 @@ function excel11(wb, ws, d) { return excelKetPola('Pola Ruang RDTR/RTRW', POLA_C
 //   Tersedia / Tidak Tersedia diambil dari kolom Vname (huruf besar/kecil bebas)
 // =====================================================================
 const vCol = () => COLS.find(c => c.toUpperCase() === 'VNAME');
-// 0 = Tersedia, 1 = Tidak Tersedia, -1 = tidak dikenali
+// 0 = Tersedia, 1 = Tidak Tersedia, 2 = Tidak Dapat Dianalisis, -1 = tidak dikenali
 const ketIdx = v => {
   const s = norm(String(v || '').replace(/[\s_\-]+/g, ' ')); if (!s) return -1;
+  if (isTDA(s)) return 2;
   return /(^|\s)(tidak|tdk|belum)(\s|$)/.test(s) ? 1 : s.includes('tersedia') ? 0 : -1;
 };
-const ketMk = (a, b) => { const t = a + b; return { a, b, t, pa: pc(a, t), pb: pc(b, t) }; };
+const ketMk = (a, b, u = 0) => { const t = a + b + u; return { a, b, u, t, pa: pc(a, t), pb: pc(b, t), pu: pc(u, t) }; };
+// bagian tampilan: kolom "Tidak Dapat Dianalisis" hanya muncul bila ada di data (tda = true)
+const ketGrp = tda => th('Tersedia', 'colspan=2') + th('Tidak Tersedia', 'colspan=2') + (tda ? th(TDA_LABEL, 'colspan=2') : '');
+const ketLuas = tda => (tda ? [1, 2, 3] : [1, 2]).map(() => th('Luas (Ha)') + th('Luas (%)')).join('');
+const ketCells = (r, tda) => `${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}${tda ? td(fd(r.u), 'n') + td(fd(r.pu), 'n') : ''}${tdr(r.t)}`;
+// bagian Excel: header "Ketersediaan Tanah" (3 baris) mulai kolom c0; mengembalikan nomor kolom Jumlah
+function ketHeads(ws, c0, tda) {
+  const nC = tda ? 3 : 2, cT = c0 + nC * 2;
+  H(ws, 1, c0, 1, cT - 1, 'Ketersediaan Tanah');
+  ['Tersedia', 'Tidak Tersedia'].concat(tda ? [TDA_LABEL] : []).forEach((t, i) => H(ws, 2, c0 + i * 2, 2, c0 + i * 2 + 1, t));
+  for (let i = 0; i < nC * 2; i++) H(ws, 3, c0 + i, 3, c0 + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
+  H(ws, 1, cT, 3, cT, 'Jumlah (Ha)');
+  return cT;
+}
+// tulis 1 baris data mulai kolom c0. f = [rumus Tersedia, Tidak Tersedia, TDA] (null = nilai statis)
+function ketPut(ws, r, c0, o, f, tda, b) {
+  const nC = tda ? 3 : 2, cT = c0 + nC * 2, C = colLetter, TL = C(cT), V = [o.a, o.b, o.u], P = [o.pa, o.pb, o.pu], S = [];
+  for (let c = 0; c < nC; c++) {
+    cell(ws, r, c0 + c * 2, f && f[c] ? FX(f[c], V[c]) : V[c], { num: 1, b });
+    cell(ws, r, c0 + c * 2 + 1, FX(`IF($${TL}${r}=0,0,${C(c0 + c * 2)}${r}/$${TL}${r}*100)`, P[c]), { num: 1, b });
+    S.push(`${C(c0 + c * 2)}${r}`);
+  }
+  cell(ws, r, cT, FX(S.join('+'), o.t), { num: 1, b: 1 });
+  return cT;
+}
+const ketFs = (ex2, tda, strict) => ex2 ? [ketSumF(0, ex2, strict), ketSumF(1, ex2, strict)].concat(tda ? [ketSumF(2, ex2, strict)] : []) : null;
+const ketSums = (c0, a, z, tda) => (tda ? [0, 2, 4] : [0, 2]).map(i => `SUM(${colLetter(c0 + i)}${a}:${colLetter(c0 + i)}${z})`);
 
 // ---------- IV-9 : per kabupaten/kota ----------
 function buildKetKec() {
   const V = vCol(); if (!ROWS.length || !V) return null;
-  const m = {}; let any = false;
+  const m = {}; let any = false, tda = false;
   for (const r of ROWS) {
     const i = ketIdx(r[V]); if (i < 0) continue;
-    any = true; const k = kecOf(r); m[k] ??= [0, 0]; m[k][i] += area(r);
+    if (i === 2) tda = true;
+    any = true; const k = kecOf(r); m[k] ??= [0, 0, 0]; m[k][i] += area(r);
   }
   if (!any) return null;
-  const rows = Object.keys(m).sort().map(k => ({ k, ...ketMk(m[k][0], m[k][1]) }));
-  return { rows, tot: ketMk(sumArr(rows.map(r => r.a)), sumArr(rows.map(r => r.b))), wil: wilayah() };
+  const rows = Object.keys(m).sort().map(k => ({ k, ...ketMk(m[k][0], m[k][1], m[k][2]) }));
+  return { rows, tot: ketMk(sumArr(rows.map(r => r.a)), sumArr(rows.map(r => r.b)), sumArr(rows.map(r => r.u))), wil: wilayah(), tda: TDA_ALWAYS || tda };
 }
 const htmlKetKec = (d, ex) => {
-  const cells = r => `${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}${tdr(r.t)}`;
-  let h = `<div class=wrap><div><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Ketersediaan Tanah', 'colspan=4')}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
-  <tr>${th('Tersedia', 'colspan=2')}${th('Tidak Tersedia', 'colspan=2')}</tr>
-  <tr>${th('Luas (Ha)')}${th('Luas (%)')}${th('Luas (Ha)')}${th('Luas (%)')}</tr>`;
+  const cells = r => ketCells(r, d.tda);
+  let h = `<div class=wrap><div><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Ketersediaan Tanah', `colspan=${d.tda ? 6 : 4}`)}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
+  <tr>${ketGrp(d.tda)}</tr>
+  <tr>${ketLuas(d.tda)}</tr>`;
   d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.k)}${cells(r)}</tr>`);
   return h + `<tr class=tot><td colspan=2 class=c>${d.wil}</td>${cells(d.tot)}</tr></table></div>${cvTag(ex)}</div>`;
 };
@@ -667,72 +711,59 @@ const chartKetKec = (cv, d, a) => new Chart(cv, {
   data: {
     labels: d.rows.map(r => r.k), datasets: [
       { label: 'Tersedia', data: d.rows.map(r => r.a), backgroundColor: '#ffc000' },
-      { label: 'Tidak Tersedia', data: d.rows.map(r => r.b), backgroundColor: NAVY }]
+      { label: 'Tidak Tersedia', data: d.rows.map(r => r.b), backgroundColor: NAVY }].concat(d.tda ? [{ label: TDA_LABEL, data: d.rows.map(r => r.u), backgroundColor: TDA_COLOR }] : [])
   },
   options: { ...baseOpt(['KETERSEDIAAN TANAH PER KECAMATAN', d.wil.toUpperCase() + ' TAHUN 2026 (HA)'], a, 'bottom'), scales: { y: { beginAtZero: true } } },
   plugins: [bgPlugin, multiVals]
 });
 function excelKetKec(wb, ws, d, ex) {
-  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 1, 6, 'Ketersediaan Tanah');
-  H(ws, 2, 3, 2, 4, 'Tersedia'); H(ws, 2, 5, 2, 6, 'Tidak Tersedia'); H(ws, 1, 7, 3, 7, 'Jumlah (Ha)');
-  ['Luas (Ha)', 'Luas (%)', 'Luas (Ha)', 'Luas (%)'].forEach((t, i) => H(ws, 3, 3 + i, 3, 3 + i, t));
+  const tda = d.tda, C = colLetter;
+  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); const cT = ketHeads(ws, 3, tda);
   const fK = rawRng('WADMKC'), r1 = 4, rL = 3 + d.rows.length, n = rL + 1;
-  const pcF = (x, c) => `IF($G${x}=0,0,${c}${x}/$G${x}*100)`;
-  const put = (x, o, fa, fb) => {      // o = data baris; fa/fb = rumus Tersedia / Tidak Tersedia (atau null = nilai statis)
-    cell(ws, x, 3, fa ? FX(fa, o.a) : o.a, { num: 1 }); cell(ws, x, 4, FX(pcF(x, 'C'), o.pa), { num: 1 });
-    cell(ws, x, 5, fb ? FX(fb, o.b) : o.b, { num: 1 }); cell(ws, x, 6, FX(pcF(x, 'E'), o.pb), { num: 1 });
-    cell(ws, x, 7, FX(`C${x}+E${x}`, o.t), { num: 1, b: 1 });
-  };
   d.rows.forEach((r, i) => {
     const x = r1 + i, ex2 = fK && r.k !== '-' ? [[fK, `$B${x}`]] : null;
-    cell(ws, x, 1, i + 1, { ctr: 1 }); cell(ws, x, 2, r.k); put(x, r, ex2 && ketSumF(0, ex2), ex2 && ketSumF(1, ex2));
+    cell(ws, x, 1, i + 1, { ctr: 1 }); cell(ws, x, 2, r.k); ketPut(ws, x, 3, r, ketFs(ex2, tda), tda);
   });
   cell(ws, n, 1, d.wil, { b: 1, ctr: 1 }); cell(ws, n, 2, null); ws.mergeCells(n, 1, n, 2);
-  put(n, d.tot, `SUM(C${r1}:C${rL})`, `SUM(E${r1}:E${rL})`);
-  for (let c = 3; c <= 7; c++) ws.getCell(n, c).font = { bold: true };
-  ws.getColumn(1).width = 6; ws.getColumn(2).width = 24; for (let c = 3; c <= 7; c++) ws.getColumn(c).width = 14;
-  const q = `'${ws.name.replace(/'/g, "''")}'!`, cat = `${q}$B$${r1}:$B$${rL}`, cats = d.rows.map(r => r.k);
-  addXChart({ sheet: ws.name, type: 'bar', legend: 'b', from: { col: 8, row: 0 }, ext: { w: ex.w, h: ex.h }, title: 'KETERSEDIAAN TANAH PER KECAMATAN ' + d.wil.toUpperCase() + ' TAHUN 2026 (HA)',
-    series: [{ name: 'Tersedia', cat, catVals: cats, val: `${q}$C$${r1}:$C$${rL}`, vals: d.rows.map(r => r.a), color: '#ffc000' },
-             { name: 'Tidak Tersedia', cat, catVals: cats, val: `${q}$E$${r1}:$E$${rL}`, vals: d.rows.map(r => r.b), color: NAVY }] });
+  ketPut(ws, n, 3, d.tot, ketSums(3, r1, rL, tda), tda, true);
+  ws.getColumn(1).width = 6; ws.getColumn(2).width = 24; for (let c = 3; c <= cT; c++) ws.getColumn(c).width = 14;
+  const q = `'${ws.name.replace(/'/g, "''")}'!`, cat = `${q}$B$${r1}:$B$${rL}`, cats = d.rows.map(r => r.k), R = c => `${q}$${C(c)}$${r1}:$${C(c)}$${rL}`;
+  const series = [{ name: 'Tersedia', cat, catVals: cats, val: R(3), vals: d.rows.map(r => r.a), color: '#ffc000' },
+                  { name: 'Tidak Tersedia', cat, catVals: cats, val: R(5), vals: d.rows.map(r => r.b), color: NAVY }];
+  if (tda) series.push({ name: TDA_LABEL, cat, catVals: cats, val: R(7), vals: d.rows.map(r => r.u), color: TDA_COLOR });
+  addXChart({ sheet: ws.name, type: 'bar', legend: 'b', from: { col: cT + 1, row: 0 }, ext: { w: ex.w, h: ex.h }, title: 'KETERSEDIAAN TANAH PER KECAMATAN ' + d.wil.toUpperCase() + ' TAHUN 2026 (HA)', series });
 }
 
 // ---------- IV-10 : per kabupaten/kota x Penggunaan Tanah (kolom col, mis. QNAME25) ----------
 function buildKetPola(col) {
   const V = vCol(); if (!ROWS.length || !V || !COLS.includes(col)) return null;
-  const m = {}; let any = false;
+  const m = {}; let any = false, tda = false;
   for (const r of ROWS) {
     const p = (r[col] || '').trim(), i = ketIdx(r[V]); if (!p || i < 0) continue;
-    any = true; const k = kecOf(r); m[k] ??= {}; m[k][p] ??= [0, 0]; m[k][p][i] += area(r);
+    if (i === 2) tda = true;
+    any = true; const k = kecOf(r); m[k] ??= {}; m[k][p] ??= [0, 0, 0]; m[k][p][i] += area(r);
   }
   if (!any) return null;
   const by = (x, y) => x.localeCompare(y);
-  const kecs = Object.keys(m).sort().map(k => ({ k, rows: Object.keys(m[k]).sort(by).map(p => ({ p, ...ketMk(m[k][p][0], m[k][p][1]) })) }));
+  const kecs = Object.keys(m).sort().map(k => ({ k, rows: Object.keys(m[k]).sort(by).map(p => ({ p, ...ketMk(m[k][p][0], m[k][p][1], m[k][p][2]) })) }));
   const all = kecs.flatMap(kc => kc.rows);
-  return { kecs, tot: ketMk(sumArr(all.map(r => r.a)), sumArr(all.map(r => r.b))), wil: wilayah() };
+  return { kecs, tot: ketMk(sumArr(all.map(r => r.a)), sumArr(all.map(r => r.b)), sumArr(all.map(r => r.u))), wil: wilayah(), tda: TDA_ALWAYS || tda };
 }
 const htmlKetPola = label => d => {
   const top = 'style="vertical-align:top"';
-  const cells = r => `${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}${tdr(r.t)}`;
-  let h = `<div class=raw-scroll><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th(label, 'rowspan=3')}${th('Ketersediaan Tanah', 'colspan=4')}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
-  <tr>${th('Tersedia', 'colspan=2')}${th('Tidak Tersedia', 'colspan=2')}</tr>
-  <tr>${th('Luas (Ha)')}${th('Luas (%)')}${th('Luas (Ha)')}${th('Luas (%)')}</tr>`;
+  const cells = r => ketCells(r, d.tda);
+  let h = `<div class=raw-scroll><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th(label, 'rowspan=3')}${th('Ketersediaan Tanah', `colspan=${d.tda ? 6 : 4}`)}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
+  <tr>${ketGrp(d.tda)}</tr>
+  <tr>${ketLuas(d.tda)}</tr>`;
   d.kecs.forEach((kc, ki) => kc.rows.forEach((r, i) => {
     h += '<tr>' + (i === 0 ? `<td class=c rowspan=${kc.rows.length} ${top}>${ki + 1}</td><td rowspan=${kc.rows.length} ${top}>${kc.k}</td>` : '') + td(r.p) + cells(r) + '</tr>';
   }));
   return h + `<tr class=tot><td colspan=3 class=c>${d.wil}</td>${cells(d.tot)}</tr></table></div>`;
 };
 const excelKetPola = (label, col = 'QNAME25', strict = false) => (wb, ws, d) => {
-  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 3, 3, label); H(ws, 1, 4, 1, 7, 'Ketersediaan Tanah');
-  H(ws, 2, 4, 2, 5, 'Tersedia'); H(ws, 2, 6, 2, 7, 'Tidak Tersedia');
-  [4, 5, 6, 7].forEach((c, i) => H(ws, 3, c, 3, c, i % 2 ? 'Luas (%)' : 'Luas (Ha)')); H(ws, 1, 8, 3, 8, 'Jumlah (Ha)');
+  const tda = d.tda;
+  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 3, 3, label); const cT = ketHeads(ws, 4, tda);
   const fK = rawRng('WADMKC'), fP = rawRng(col);
-  const put = (r, o, fa, fb, b) => {
-    const pcF = c => `IF($H${r}=0,0,${c}${r}/$H${r}*100)`;
-    cell(ws, r, 4, fa ? FX(fa, o.a) : o.a, { num: 1, b }); cell(ws, r, 5, FX(pcF('D'), o.pa), { num: 1, b });
-    cell(ws, r, 6, fb ? FX(fb, o.b) : o.b, { num: 1, b }); cell(ws, r, 7, FX(pcF('F'), o.pb), { num: 1, b });
-    cell(ws, r, 8, FX(`D${r}+F${r}`, o.t), { num: 1, b: 1 });
-  };
   const mid = { horizontal: 'center', vertical: 'top', wrapText: true }, left = { vertical: 'top', wrapText: true };
   let r = 4; const r1 = 4;
   d.kecs.forEach((kc, ki) => {
@@ -740,15 +771,15 @@ const excelKetPola = (label, col = 'QNAME25', strict = false) => (wb, ws, d) => 
     kc.rows.forEach(x => {
       cell(ws, r, 1, null); cell(ws, r, 2, null); cell(ws, r, 3, x.p).alignment = left;
       const ex2 = fK && fP && kc.k !== '-' ? [[fK, `$B$${k0}`], [fP, `$C${r}`]] : null;     // kabupaten/kota (sel gabungan) + kategori baris ini
-      put(r, x, ex2 && ketSumF(0, ex2, strict), ex2 && ketSumF(1, ex2, strict)); r++;
+      ketPut(ws, r, 4, x, ketFs(ex2, tda, strict), tda); r++;
     });
     ws.getCell(k0, 1).value = ki + 1; ws.getCell(k0, 1).alignment = mid;
     ws.getCell(k0, 2).value = kc.k; ws.getCell(k0, 2).alignment = left;
     if (r - 1 > k0) { ws.mergeCells(k0, 1, r - 1, 1); ws.mergeCells(k0, 2, r - 1, 2); }
   });
   cell(ws, r, 1, d.wil, { b: 1, ctr: 1 }); cell(ws, r, 2, null); cell(ws, r, 3, null); ws.mergeCells(r, 1, r, 3);
-  put(r, d.tot, `SUM(D${r1}:D${r - 1})`, `SUM(F${r1}:F${r - 1})`, true);
-  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; ws.getColumn(3).width = 38; for (let c = 4; c <= 7; c++) ws.getColumn(c).width = 12; ws.getColumn(8).width = 15;
+  ketPut(ws, r, 4, d.tot, ketSums(4, r1, r - 1, tda), tda, true);
+  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; ws.getColumn(3).width = 38; for (let c = 4; c < cT; c++) ws.getColumn(c).width = 12; ws.getColumn(cT).width = 15;
   ws.views = [{ state: 'frozen', ySplit: 3 }];
 };
 
@@ -759,53 +790,54 @@ const excelKetPola = (label, col = 'QNAME25', strict = false) => (wb, ws, d) => 
 // =====================================================================
 const MENDUKUNG_SESUAI = true;   // true: "Mendukung" ikut dihitung ke kolom "Sesuai" di IV-8; false: "Mendukung" tidak dihitung
 const ksCol = () => COLS.find(c => ['KSPOLA', 'KS_POLA'].includes(c.toUpperCase()));
-const ksCode = v => {            // -> 'S' | 'T' | 'M' | '' (tidak dikenali)
+const ksCode = v => {            // -> 'S' | 'T' | 'M' | 'D' (Tidak Dapat Dianalisis) | '' (tidak dikenali)
   const s = norm(String(v || '').replace(/[\s_\-]+/g, ' ')); if (!s) return '';
+  if (isTDA(s)) return 'D';      // dicek lebih dulu: "Tidak Dapat Dianalisis" mengandung kata "tidak" tetapi BUKAN "Tidak Sesuai"
   if (/(^|\s)(tidak|tdk)(\s|$)/.test(s)) return 'T';
   if (s.includes('mendukung')) return 'M';
   return s.includes('sesuai') ? 'S' : '';
 };
-// const ksMk = (a, b) => { const t = a + b; return { a, b, t, pa: pc(a, t), pb: pc(b, t) }; };
 
 // ---------- IV-8 ----------
-// 3 kategori: Sesuai (S), Mendukung (M), Tidak Sesuai (T). x = Tidak Sesuai, t = jumlah.
-const ksMk = (s, m, x) => { const t = s + m + x; return { s, m, x, t, ps: pc(s, t), pm: pc(m, t), px: pc(x, t) }; };
+// Kategori: Sesuai (S), Mendukung (M), Tidak Sesuai (T), Tidak Dapat Dianalisis (D, kolomnya muncul bila ada di data). x = Tidak Sesuai, u = Tidak Dapat Dianalisis, t = jumlah.
+const ksMk = (s, m, x, u = 0) => { const t = s + m + x + u; return { s, m, x, u, t, ps: pc(s, t), pm: pc(m, t), px: pc(x, t), pu: pc(u, t) }; };
 function buildKes() {
   const K = ksCol(); if (!ROWS.length || !K || !COLS.includes(POLA_COL)) return null;
-  const g = {}; let any = false;
+  const g = {}; let any = false, tda = false;
   for (const r of ROWS) {
     const p = (r[POLA_COL] || '').trim(), c = ksCode(r[K]); if (!p || !c) continue;
-    const i = c === 'S' ? 0 : c === 'M' ? 1 : 2;
-    any = true; const k = kecOf(r); g[k] ??= {}; g[k][p] ??= [0, 0, 0]; g[k][p][i] += area(r);
+    const i = c === 'S' ? 0 : c === 'M' ? 1 : c === 'T' ? 2 : 3;
+    if (c === 'D') tda = true;
+    any = true; const k = kecOf(r); g[k] ??= {}; g[k][p] ??= [0, 0, 0, 0]; g[k][p][i] += area(r);
   }
   if (!any) return null;
   const by = (x, y) => x.localeCompare(y);
   const kecs = Object.keys(g).sort().map(k => {
     const rows = Object.keys(g[k]).sort(by).map(p => ({ p, ...ksMk(...g[k][p]) }));
-    return { k, rows, sub: ksMk(sumArr(rows.map(r => r.s)), sumArr(rows.map(r => r.m)), sumArr(rows.map(r => r.x))) };
+    return { k, rows, sub: ksMk(sumArr(rows.map(r => r.s)), sumArr(rows.map(r => r.m)), sumArr(rows.map(r => r.x)), sumArr(rows.map(r => r.u))) };
   });
-  const tot = ksMk(sumArr(kecs.map(c => c.sub.s)), sumArr(kecs.map(c => c.sub.m)), sumArr(kecs.map(c => c.sub.x)));
-  return { kecs, tot, wil: wilayah() };
+  const tot = ksMk(sumArr(kecs.map(c => c.sub.s)), sumArr(kecs.map(c => c.sub.m)), sumArr(kecs.map(c => c.sub.x)), sumArr(kecs.map(c => c.sub.u)));
+  return { kecs, tot, wil: wilayah(), tda: TDA_ALWAYS || tda };
 }
-const ksCells = r => `${td(fd(r.s), 'n')}${td(fd(r.ps), 'n')}${td(fd(r.m), 'n')}${td(fd(r.pm), 'n')}${td(fd(r.x), 'n')}${td(fd(r.px), 'n')}${tdr(r.t)}`;
-const ksHead = (kolom, rs) => `<tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${kolom ? th(kolom, 'rowspan=3') : ''}${th('Kesesuaian Penggunaan Tanah terhadap RDTR/RTRW', 'colspan=6')}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
-  <tr>${th('Sesuai', 'colspan=2')}${th('Mendukung', 'colspan=2')}${th('Tidak Sesuai', 'colspan=2')}</tr>
-  <tr>${[1, 2, 3].map(() => th('Luas (Ha)') + th('Luas (%)')).join('')}</tr>`;
+const ksCells = (r, tda) => `${td(fd(r.s), 'n')}${td(fd(r.ps), 'n')}${td(fd(r.m), 'n')}${td(fd(r.pm), 'n')}${td(fd(r.x), 'n')}${td(fd(r.px), 'n')}${tda ? td(fd(r.u), 'n') + td(fd(r.pu), 'n') : ''}${tdr(r.t)}`;
+const ksHead = (kolom, tda) => `<tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${kolom ? th(kolom, 'rowspan=3') : ''}${th('Kesesuaian Penggunaan Tanah terhadap RDTR/RTRW', `colspan=${tda ? 8 : 6}`)}${th('Jumlah (Ha)', 'rowspan=3')}</tr>
+  <tr>${th('Sesuai', 'colspan=2')}${th('Mendukung', 'colspan=2')}${th('Tidak Sesuai', 'colspan=2')}${tda ? th(TDA_LABEL, 'colspan=2') : ''}</tr>
+  <tr>${(tda ? [1, 2, 3, 4] : [1, 2, 3]).map(() => th('Luas (Ha)') + th('Luas (%)')).join('')}</tr>`;
 const htmlKes = (d, ex) => {
   const top = 'style="vertical-align:top"';
   // ringkasan per kabupaten/kota + grafik (di atas), lalu tabel rinci
-  let h = `<div class=wrap><div><table>${ksHead('')}`;
-  d.kecs.forEach((kc, i) => h += `<tr>${td(i + 1, 'c')}${td(kc.k)}${ksCells(kc.sub)}</tr>`);
-  h += `<tr class=tot><td colspan=2 class=c>${d.wil}</td>${ksCells(d.tot)}</tr></table></div>${cvTag(ex)}</div><br>`;
-  h += `<div class=raw-scroll><table>${ksHead('Pola Ruang RDTR/RTRW')}`;
+  let h = `<div class=wrap><div><table>${ksHead('', d.tda)}`;
+  d.kecs.forEach((kc, i) => h += `<tr>${td(i + 1, 'c')}${td(kc.k)}${ksCells(kc.sub, d.tda)}</tr>`);
+  h += `<tr class=tot><td colspan=2 class=c>${d.wil}</td>${ksCells(d.tot, d.tda)}</tr></table></div>${cvTag(ex)}</div><br>`;
+  h += `<div class=raw-scroll><table>${ksHead('Pola Ruang RDTR/RTRW', d.tda)}`;
   d.kecs.forEach((kc, ki) => {
     const span = kc.rows.length + 1;
     kc.rows.forEach((r, i) => {
-      h += '<tr>' + (i === 0 ? `<td class=c rowspan=${span} ${top}>${ki + 1}</td><td rowspan=${span} ${top}>${kc.k}</td>` : '') + td(r.p) + ksCells(r) + '</tr>';
+      h += '<tr>' + (i === 0 ? `<td class=c rowspan=${span} ${top}>${ki + 1}</td><td rowspan=${span} ${top}>${kc.k}</td>` : '') + td(r.p) + ksCells(r, d.tda) + '</tr>';
     });
-    h += `<tr class=tot><td class=c>Jumlah</td>${ksCells(kc.sub)}</tr>`;
+    h += `<tr class=tot><td class=c>Jumlah</td>${ksCells(kc.sub, d.tda)}</tr>`;
   });
-  return h + `<tr class=tot><td colspan=3 class=c>${d.wil}</td>${ksCells(d.tot)}</tr></table></div>`;
+  return h + `<tr class=tot><td colspan=3 class=c>${d.wil}</td>${ksCells(d.tot, d.tda)}</tr></table></div>`;
 };
 const chartKes = (cv, d, a) => new Chart(cv, {
   type: 'bar',
@@ -813,33 +845,35 @@ const chartKes = (cv, d, a) => new Chart(cv, {
     labels: d.kecs.map(k => k.k), datasets: [
       { label: 'Sesuai', data: d.kecs.map(k => k.sub.s), backgroundColor: NAVY },
       { label: 'Mendukung', data: d.kecs.map(k => k.sub.m), backgroundColor: '#ffc000' },
-      { label: 'Tidak Sesuai', data: d.kecs.map(k => k.sub.x), backgroundColor: '#c00000' }]
+      { label: 'Tidak Sesuai', data: d.kecs.map(k => k.sub.x), backgroundColor: '#c00000' }].concat(d.tda ? [{ label: TDA_LABEL, data: d.kecs.map(k => k.sub.u), backgroundColor: TDA_COLOR }] : [])
   },
   options: { ...baseOpt(['KESESUAIAN PENGGUNAAN TANAH TERHADAP FUNGSI KAWASAN', 'PER KECAMATAN DI ' + d.wil.toUpperCase() + ' TAHUN 2026 (HA)'], a, 'bottom'), scales: { y: { beginAtZero: true } } },
   plugins: [bgPlugin, multiVals]
 });
 function excelKes(wb, ws, d, ex) {
+  const tda = d.tda, KS = ['s', 'm', 'x'].concat(tda ? ['u'] : []), PK = ['ps', 'pm', 'px', 'pu'], CODE = { s: 'S', m: 'M', x: 'T', u: 'D' }, nK = KS.length;
   const heads = (c0, kolom) => {      // header 3 baris mulai kolom c0; kolom = true -> ada kolom Pola Ruang
     const o = kolom ? 3 : 2;          // jumlah kolom sebelum data angka
     H(ws, 1, c0, 3, c0, 'No'); H(ws, 1, c0 + 1, 3, c0 + 1, 'Kabupaten/Kota'); if (kolom) H(ws, 1, c0 + 2, 3, c0 + 2, 'Pola Ruang RDTR/RTRW');
-    H(ws, 1, c0 + o, 1, c0 + o + 5, 'Kesesuaian Penggunaan Tanah terhadap RDTR/RTRW');
-    ['Sesuai', 'Mendukung', 'Tidak Sesuai'].forEach((t, i) => H(ws, 2, c0 + o + i * 2, 2, c0 + o + i * 2 + 1, t));
-    for (let i = 0; i < 6; i++) H(ws, 3, c0 + o + i, 3, c0 + o + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
-    H(ws, 1, c0 + o + 6, 3, c0 + o + 6, 'Jumlah (Ha)');
+    H(ws, 1, c0 + o, 1, c0 + o + nK * 2 - 1, 'Kesesuaian Penggunaan Tanah terhadap RDTR/RTRW');
+    ['Sesuai', 'Mendukung', 'Tidak Sesuai'].concat(tda ? [TDA_LABEL] : []).forEach((t, i) => H(ws, 2, c0 + o + i * 2, 2, c0 + o + i * 2 + 1, t));
+    for (let i = 0; i < nK * 2; i++) H(ws, 3, c0 + o + i, 3, c0 + o + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
+    H(ws, 1, c0 + o + nK * 2, 3, c0 + o + nK * 2, 'Jumlah (Ha)');
     return c0 + o;                    // kolom angka pertama
   };
   const C = colLetter, fK = rawRng('WADMKC'), fP = rawRng(POLA_COL);
-  // tulis 7 sel: s, %s, m, %m, x, %x, t. f = {s,m,x} rumus luas (null = nilai statis); persen & jumlah selalu rumus
+  // tulis sel: tiap kategori (luas, %), lalu jumlah. f = {s,m,x,u} rumus luas (null = nilai statis); persen & jumlah selalu rumus
   const put = (r, c, o, f, b) => {
-    const T = `${C(c + 6)}${r}`, p = k => `IF(${T}=0,0,${C(k)}${r}/${T}*100)`;
-    cell(ws, r, c, f.s ? FX(f.s, o.s) : o.s, { num: 1, b });     cell(ws, r, c + 1, FX(p(c), o.ps), { num: 1, b });
-    cell(ws, r, c + 2, f.m ? FX(f.m, o.m) : o.m, { num: 1, b }); cell(ws, r, c + 3, FX(p(c + 2), o.pm), { num: 1, b });
-    cell(ws, r, c + 4, f.x ? FX(f.x, o.x) : o.x, { num: 1, b }); cell(ws, r, c + 5, FX(p(c + 4), o.px), { num: 1, b });
-    cell(ws, r, c + 6, FX(`${C(c)}${r}+${C(c + 2)}${r}+${C(c + 4)}${r}`, o.t), { num: 1, b: 1 });
+    const T = `${C(c + nK * 2)}${r}`;
+    KS.forEach((k, i) => {
+      cell(ws, r, c + i * 2, f[k] ? FX(f[k], o[k]) : o[k], { num: 1, b });
+      cell(ws, r, c + i * 2 + 1, FX(`IF(${T}=0,0,${C(c + i * 2)}${r}/${T}*100)`, o[PK[i]]), { num: 1, b });
+    });
+    cell(ws, r, c + nK * 2, FX(KS.map((_, i) => `${C(c + i * 2)}${r}`).join('+'), o.t), { num: 1, b: 1 });
   };
-  const sumF = (c, a, z) => ({ s: `SUM(${C(c)}${a}:${C(c)}${z})`, m: `SUM(${C(c + 2)}${a}:${C(c + 2)}${z})`, x: `SUM(${C(c + 4)}${a}:${C(c + 4)}${z})` });
+  const sumF = (c, a, z) => { const f = {}; KS.forEach((k, i) => f[k] = `SUM(${C(c + i * 2)}${a}:${C(c + i * 2)}${z})`); return f; };
   const mid = { horizontal: 'center', vertical: 'top', wrapText: true }, left = { vertical: 'top', wrapText: true };
-  // ---- tabel rinci (kiri): kolom 1..10 ----
+  // ---- tabel rinci (kiri): kolom 1.. ----
   const n1 = heads(1, true), subRow = [];
   let r = 4;
   d.kecs.forEach((kc, ki) => {
@@ -847,7 +881,8 @@ function excelKes(wb, ws, d, ex) {
     kc.rows.forEach(x => {
       cell(ws, r, 1, null); cell(ws, r, 2, null); cell(ws, r, 3, x.p).alignment = left;
       const ex2 = fK && fP && kc.k !== '-' ? [[fK, `$B$${k0}`], [fP, `$C${r}`]] : null;
-      put(r, n1, x, ex2 ? { s: ksSumF('S', ex2), m: ksSumF('M', ex2), x: ksSumF('T', ex2) } : {}); r++;
+      const f = {}; if (ex2) KS.forEach(k => f[k] = ksSumF(CODE[k], ex2));
+      put(r, n1, x, f); r++;
     });
     cell(ws, r, 1, null); cell(ws, r, 2, null); cell(ws, r, 3, 'Jumlah', { b: 1, ctr: 1 }); put(r, n1, kc.sub, sumF(n1, k0, r - 1), true); subRow.push(r); r++;
     ws.getCell(k0, 1).value = ki + 1; ws.getCell(k0, 1).alignment = mid;
@@ -855,46 +890,50 @@ function excelKes(wb, ws, d, ex) {
     ws.mergeCells(k0, 1, r - 1, 1); ws.mergeCells(k0, 2, r - 1, 2);
   });
   cell(ws, r, 1, d.wil, { b: 1, ctr: 1 }); cell(ws, r, 2, null); cell(ws, r, 3, null); ws.mergeCells(r, 1, r, 3);
-  const tf = {}; ['s', 'm', 'x'].forEach((k, i) => tf[k] = `SUMIF($C$4:$C$${r - 1},"Jumlah",${C(n1 + i * 2)}$4:${C(n1 + i * 2)}$${r - 1})`);   // total = jumlahkan baris "Jumlah" tiap kabupaten/kota
+  const tf = {}; KS.forEach((k, i) => tf[k] = `SUMIF($C$4:$C$${r - 1},"Jumlah",${C(n1 + i * 2)}$4:${C(n1 + i * 2)}$${r - 1})`);   // total = jumlahkan baris "Jumlah" tiap kabupaten/kota
   put(r, n1, d.tot, tf, true);
-  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; ws.getColumn(3).width = 38; for (let c = 4; c <= 9; c++) ws.getColumn(c).width = 12; ws.getColumn(10).width = 15;
-  // ---- ringkasan per kabupaten/kota (kanan): mulai kolom 12, mengambil dari baris "Jumlah" tabel rinci ----
-  const c0 = 12, n2 = heads(c0, false);
+  const cTot = n1 + nK * 2;           // kolom Jumlah tabel rinci
+  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; ws.getColumn(3).width = 38; for (let c = n1; c < cTot; c++) ws.getColumn(c).width = 12; ws.getColumn(cTot).width = 15;
+  // ---- ringkasan per kabupaten/kota (kanan): mulai 2 kolom setelah tabel rinci, mengambil dari baris "Jumlah" tabel rinci ----
+  const c0 = cTot + 2, n2 = heads(c0, false);
   d.kecs.forEach((kc, i) => {
     const n = 4 + i, sr = subRow[i]; cell(ws, n, c0, i + 1, { ctr: 1 }); cell(ws, n, c0 + 1, kc.k);
-    put(n, n2, kc.sub, { s: `${C(n1)}${sr}`, m: `${C(n1 + 2)}${sr}`, x: `${C(n1 + 4)}${sr}` });
+    const f = {}; KS.forEach((k, j) => f[k] = `${C(n1 + j * 2)}${sr}`);
+    put(n, n2, kc.sub, f);
   });
   const n = 4 + d.kecs.length;
   cell(ws, n, c0, d.wil, { b: 1, ctr: 1 }); cell(ws, n, c0 + 1, null); ws.mergeCells(n, c0, n, c0 + 1); put(n, n2, d.tot, sumF(n2, 4, n - 1), true);
-  ws.getColumn(c0).width = 6; ws.getColumn(c0 + 1).width = 20; for (let c = c0 + 2; c <= c0 + 7; c++) ws.getColumn(c).width = 12; ws.getColumn(c0 + 8).width = 15;
+  ws.getColumn(c0).width = 6; ws.getColumn(c0 + 1).width = 20; for (let c = c0 + 2; c <= c0 + 1 + nK * 2; c++) ws.getColumn(c).width = 12; ws.getColumn(c0 + 2 + nK * 2).width = 15;
   const q = `'${ws.name.replace(/'/g, "''")}'!`, cat = `${q}$${C(c0 + 1)}$4:$${C(c0 + 1)}$${n - 1}`, cats = d.kecs.map(k => k.k), R = c => `${q}$${C(c)}$4:$${C(c)}$${n - 1}`;
+  const series = [{ name: 'Sesuai', cat, catVals: cats, val: R(n2), vals: d.kecs.map(k => k.sub.s), color: NAVY },
+                  { name: 'Mendukung', cat, catVals: cats, val: R(n2 + 2), vals: d.kecs.map(k => k.sub.m), color: '#ffc000' },
+                  { name: 'Tidak Sesuai', cat, catVals: cats, val: R(n2 + 4), vals: d.kecs.map(k => k.sub.x), color: '#c00000' }];
+  if (tda) series.push({ name: TDA_LABEL, cat, catVals: cats, val: R(n2 + 6), vals: d.kecs.map(k => k.sub.u), color: TDA_COLOR });
   addXChart({ sheet: ws.name, type: 'bar', legend: 'b', from: { col: c0 - 1, row: n + 1 }, ext: { w: ex.w, h: ex.h },
-    title: 'KESESUAIAN PENGGUNAAN TANAH TERHADAP FUNGSI KAWASAN PER KECAMATAN DI ' + d.wil.toUpperCase() + ' TAHUN 2026 (HA)',
-    series: [{ name: 'Sesuai', cat, catVals: cats, val: R(n2), vals: d.kecs.map(k => k.sub.s), color: NAVY },
-             { name: 'Mendukung', cat, catVals: cats, val: R(n2 + 2), vals: d.kecs.map(k => k.sub.m), color: '#ffc000' },
-             { name: 'Tidak Sesuai', cat, catVals: cats, val: R(n2 + 4), vals: d.kecs.map(k => k.sub.x), color: '#c00000' }] });
+    title: 'KESESUAIAN PENGGUNAAN TANAH TERHADAP FUNGSI KAWASAN PER KECAMATAN DI ' + d.wil.toUpperCase() + ' TAHUN 2026 (HA)', series });
   ws.views = [{ state: 'frozen', ySplit: 3 }];
 }
 
 // ---------- IV-7 : matriks S / T / M ----------
 function buildMatKs() {
   const K = ksCol(); if (!ROWS.length || !K || !COLS.includes('QNAME25') || !COLS.includes(POLA_COL)) return null;
-  const m = {}, cols = new Set(); let any = false;
+  const m = {}, cols = new Set(); let any = false, tda = false;
   for (const r of ROWS) {
     const q = (r.QNAME25 || '').trim(), p = (r[POLA_COL] || '').trim(), c = ksCode(r[K]); if (!q || !p || !c) continue;
-    any = true; cols.add(p); (m[q] ??= {})[p] ??= new Set(); m[q][p].add(c);
+    any = true; if (c === 'D') tda = true; cols.add(p); (m[q] ??= {})[p] ??= new Set(); m[q][p].add(c);
   }
   if (!any) return null;
   const by = (x, y) => x.localeCompare(y);
-  return { cols: [...cols].sort(by), rows: Object.keys(m).sort(by).map(q => ({ q, v: m[q] })) };
+  return { cols: [...cols].sort(by), rows: Object.keys(m).sort(by).map(q => ({ q, v: m[q] })), tda };
 }
-const matCell = (v, p) => v[p] ? [...v[p]].join('/') : '-';   // jika satu pasangan punya >1 nilai, tampil mis. "S/T"
+const matCell = (v, p) => v[p] ? [...v[p]].sort((a, b) => 'STMD'.indexOf(a) - 'STMD'.indexOf(b)).join('/') : '-';   // jika satu pasangan punya >1 nilai, tampil mis. "S/T"
+const ksLegend = d => 'S = Sesuai, T = Tidak Sesuai, M = Mendukung' + (d.tda ? ', D = ' + TDA_LABEL : '') + ', - = tidak ada data';
 const htmlMatKs = d => {
   const vert = 'style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:normal;height:170px;min-width:30px;padding:6px 2px;text-align:left"';
   let h = `<div class=raw-scroll><table><tr>${th('No', 'rowspan=2')}${th('Penggunaan Tanah', 'rowspan=2')}${th('Arahan Fungsi Kawasan pada Rencana Detail Tata Ruang', `colspan=${d.cols.length}`)}</tr>
   <tr>${d.cols.map(p => th(p, vert)).join('')}</tr>`;
   d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.q)}${d.cols.map(p => td(matCell(r.v, p), 'c')).join('')}</tr>`);
-  return h + '</table></div><div class=note>S = Sesuai, T = Tidak Sesuai, M = Mendukung, - = tidak ada data</div>';
+  return h + `</table></div><div class=note>${ksLegend(d)}</div>`;
 };
 function excelMatKs(wb, ws, d) {
   const nc = d.cols.length, C = colLetter;
@@ -906,7 +945,8 @@ function excelMatKs(wb, ws, d) {
   const base = 3 + nc + 1, blk = i => base + i * (nc + 1);
   const GREY = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEDED' } };
   const cnt0 = {}; { const K = ksCol(); if (K) for (const r of ROWS) { const q = (r.QNAME25 || '').trim(), p = (r[POLA_COL] || '').trim(), c = ksCode(r[K]); if (q && p && c) { const k = q + '\u0001' + p + '\u0001' + c; cnt0[k] = (cnt0[k] || 0) + 1 } } }   // jumlah baris per sel & kode
-  if (canF) ['S', 'T', 'M'].forEach((k, i) => {
+  const CODES = ['S', 'T', 'M'].concat(d.tda ? ['D'] : []);
+  if (canF) CODES.forEach((k, i) => {
     H(ws, 1, blk(i), 1, blk(i) + nc - 1, 'Blok hitung ' + k + ' (jumlah baris data, dipakai matriks di kiri)');
     d.cols.forEach((p, j) => H(ws, 2, blk(i) + j, 2, blk(i) + j, p));
   });
@@ -916,12 +956,12 @@ function excelMatKs(wb, ws, d) {
       const cached = matCell(r.v, p);
       if (!canF) { cell(ws, n, 3 + j, cached, { ctr: 1 }); return }
       const ex2 = [[fQ, `$B${n}`], [fP, `${C(3 + j)}$2`]], cnt = [];
-      ['S', 'T', 'M'].forEach((k, bi) => { const x = cell(ws, n, blk(bi) + j, FX(ksCntF(k, ex2), cnt0[r.q + '\u0001' + p + '\u0001' + k] || 0)); x.fill = GREY; cnt.push(`${C(blk(bi) + j)}${n}`); });
-      const [S, T, M] = cnt, order = ['S', 'T', 'M'].filter(k => r.v[p] && r.v[p].has(k)).join('/') || '-';
-      cell(ws, n, 3 + j, FX(`IF(${S}+${T}+${M}=0,"-",SUBSTITUTE(TRIM(IF(${S}>0,"S ","")&IF(${T}>0,"T ","")&IF(${M}>0,"M ",""))," ","/"))`, order), { ctr: 1 });
+      CODES.forEach((k, bi) => { const x = cell(ws, n, blk(bi) + j, FX(ksCntF(k, ex2), cnt0[r.q + '\u0001' + p + '\u0001' + k] || 0)); x.fill = GREY; cnt.push(`${C(blk(bi) + j)}${n}`); });
+      const order = CODES.filter(k => r.v[p] && r.v[p].has(k)).join('/') || '-';
+      cell(ws, n, 3 + j, FX(`IF(${cnt.join('+')}=0,"-",SUBSTITUTE(TRIM(${CODES.map((k, q) => `IF(${cnt[q]}>0,"${k} ","")`).join('&')})," ","/"))`, order), { ctr: 1 });
     });
   });
-  const n = 4 + d.rows.length; ws.getCell(n, 2).value = 'S = Sesuai, T = Tidak Sesuai, M = Mendukung, - = tidak ada data';
+  const n = 4 + d.rows.length; ws.getCell(n, 2).value = ksLegend(d);
   ws.getColumn(1).width = 6; ws.getColumn(2).width = 42; for (let c = 3; c <= 2 + nc; c++) ws.getColumn(c).width = 6;
   ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 2 }];
 }
@@ -1494,12 +1534,12 @@ function buildSK() {
   const V = vCol(); if (!ROWS.length || !V || !COLS.includes('WADMKC')) return null;
   const m = {};
   for (const r of ROWS) {
-    const k = kecOf(r); m[k] ??= { a: 0, b: 0, ha: 0 }; m[k].ha += area(r);
-    const i = ketIdx(r[V]); if (i === 0) m[k].a += area(r); else if (i === 1) m[k].b += area(r);
+    const k = kecOf(r); m[k] ??= { a: 0, b: 0, u: 0, ha: 0 }; m[k].ha += area(r);
+    const i = ketIdx(r[V]); if (i === 0) m[k].a += area(r); else if (i === 1) m[k].b += area(r); else if (i === 2) m[k].u += area(r);   // 2 = Tidak Dapat Dianalisis
   }
-  const rows = Object.keys(m).sort().map(k => { const t = m[k].a + m[k].b; return { k, a: m[k].a, b: m[k].b, t, pa: pc(m[k].a, t), pb: pc(m[k].b, t), ha: m[k].ha } });
-  const a = sumArr(rows.map(r => r.a)), b = sumArr(rows.map(r => r.b)), t = a + b;
-  return (SKD = { rows, tot: { a, b, t, pa: pc(a, t), pb: pc(b, t) }, totHa: sumArr(rows.map(r => r.ha)), wil: wilayah() });
+  const rows = Object.keys(m).sort().map(k => { const t = m[k].a + m[k].b + m[k].u; return { k, a: m[k].a, b: m[k].b, u: m[k].u, t, pa: pc(m[k].a, t), pb: pc(m[k].b, t), pu: pc(m[k].u, t), ha: m[k].ha } });
+  const a = sumArr(rows.map(r => r.a)), b = sumArr(rows.map(r => r.b)), u = sumArr(rows.map(r => r.u)), t = a + b + u;
+  return (SKD = { rows, tot: { a, b, u, t, pa: pc(a, t), pb: pc(b, t), pu: pc(u, t) }, totHa: sumArr(rows.map(r => r.ha)), wil: wilayah() });
 }
 function skCalc(d) {
   const hb = d.rows.map(r => skGet(r.k, 'b')), hh = d.rows.map(r => skGet(r.k, 'a'));
@@ -1517,11 +1557,11 @@ const htmlSK = (d, ex) => {
   const c = skCalc(d);
   const inp = 'style="width:100px;text-align:right;padding:4px 8px;border:1px solid var(--bd);border-radius:6px;background:transparent;color:inherit;font:inherit"';
   const box = (k, j, v) => `<input class=sk-in type=number min=0 step=any placeholder="isi" data-k="${String(k).replace(/"/g, '&quot;')}" data-j=${j} value="${v ?? ''}" ${inp}>`;
-  let h = `<div class=skroot><div style="overflow-x:auto"><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Ketersediaan Tanah', 'colspan=4')}${th('Penguasaan Tanah', 'colspan=4')}${th('Kepadatan Penduduk (jiwa/km2)', 'rowspan=3')}</tr>
-  <tr>${th('Tersedia', 'colspan=2')}${th('Tidak Tersedia', 'colspan=2')}${th('Belum Ada HAT', 'colspan=2')}${th('Ada HAT', 'colspan=2')}</tr>
-  <tr>${[1, 2, 3, 4].map(() => th('Luas (Ha)') + th('Luas (%)')).join('')}</tr>`;
-  d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.k)}${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}<td class=n>${box(r.k, 'b', c.hb[i])}</td>${td(skD2(c.pb[i]), 'n sk-pb')}<td class=n>${box(r.k, 'a', c.hh[i])}</td>${td(skD2(c.ph[i]), 'n sk-ph')}${td(skI(c.kp[i]), 'n sk-kp')}</tr>`);
-  h += `<tr class=tot><td colspan=2 class=c>${d.wil}</td>${td(fd(d.tot.a), 'n')}${td(fd(d.tot.pa), 'n')}${td(fd(d.tot.b), 'n')}${td(fd(d.tot.pb), 'n')}${td(skD2(c.tb), 'n sk-tb')}${td(skD2(c.tbp), 'n sk-tbp')}${td(skD2(c.th), 'n sk-th')}${td(skD2(c.thp), 'n sk-thp')}${td(skI(c.tkp), 'n sk-tkp')}</tr></table>
+  let h = `<div class=skroot><div style="overflow-x:auto"><table><tr>${th('No', 'rowspan=3')}${th('Kabupaten/Kota', 'rowspan=3')}${th('Ketersediaan Tanah', 'colspan=6')}${th('Penguasaan Tanah', 'colspan=4')}${th('Kepadatan Penduduk (jiwa/km2)', 'rowspan=3')}</tr>
+  <tr>${th('Tersedia', 'colspan=2')}${th('Tidak Tersedia', 'colspan=2')}${th(TDA_LABEL, 'colspan=2')}${th('Belum Ada HAT', 'colspan=2')}${th('Ada HAT', 'colspan=2')}</tr>
+  <tr>${[1, 2, 3, 4, 5].map(() => th('Luas (Ha)') + th('Luas (%)')).join('')}</tr>`;
+  d.rows.forEach((r, i) => h += `<tr>${td(i + 1, 'c')}${td(r.k)}${td(fd(r.a), 'n')}${td(fd(r.pa), 'n')}${td(fd(r.b), 'n')}${td(fd(r.pb), 'n')}${td(fd(r.u), 'n')}${td(fd(r.pu), 'n')}<td class=n>${box(r.k, 'b', c.hb[i])}</td>${td(skD2(c.pb[i]), 'n sk-pb')}<td class=n>${box(r.k, 'a', c.hh[i])}</td>${td(skD2(c.ph[i]), 'n sk-ph')}${td(skI(c.kp[i]), 'n sk-kp')}</tr>`);
+  h += `<tr class=tot><td colspan=2 class=c>${d.wil}</td>${td(fd(d.tot.a), 'n')}${td(fd(d.tot.pa), 'n')}${td(fd(d.tot.b), 'n')}${td(fd(d.tot.pb), 'n')}${td(fd(d.tot.u), 'n')}${td(fd(d.tot.pu), 'n')}${td(skD2(c.tb), 'n sk-tb')}${td(skD2(c.tbp), 'n sk-tbp')}${td(skD2(c.th), 'n sk-th')}${td(skD2(c.thp), 'n sk-thp')}${td(skI(c.tkp), 'n sk-tkp')}</tr></table>
   <div class=note>Data Penguasaan Tanah (HAT) belum tersedia: kolom <b>Belum Ada HAT</b> dan <b>Ada HAT</b> (Ha) dikosongkan dan dapat diisi manual. Luas (%) HAT dihitung terhadap luas kabupaten/kota. Kepadatan Penduduk otomatis dari Tabel III-1 (isi Jumlah Penduduk di sana).</div></div>${cvTag(ex)}</div>`;
   return h;
 };
@@ -1567,38 +1607,41 @@ const chartSK = (cv, d, a) => {
 function excelSK(wb, ws, d, ex) {
   const YEL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
   const s1 = (EXTRA.find(e => e.build === buildT3) || { tab: '01_Tabel_III-1' }).tab;   // sheet Tabel III-1 (sumber kepadatan)
-  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 1, 6, 'Ketersediaan Tanah'); H(ws, 1, 7, 1, 10, 'Penguasaan Tanah'); H(ws, 1, 11, 3, 11, 'Kepadatan Penduduk (jiwa/km2)');
-  [['Tersedia', 3], ['Tidak Tersedia', 5], ['Belum Ada HAT', 7], ['Ada HAT', 9]].forEach(([t, c]) => H(ws, 2, c, 2, c + 1, t));
-  for (let i = 0; i < 8; i++) H(ws, 3, 3 + i, 3, 3 + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
+  // kolom: C,D Tersedia | E,F Tidak Tersedia | G,H Tidak Dapat Dianalisis | I,J Belum Ada HAT | K,L Ada HAT | M Kepadatan
+  H(ws, 1, 1, 3, 1, 'No'); H(ws, 1, 2, 3, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 1, 8, 'Ketersediaan Tanah'); H(ws, 1, 9, 1, 12, 'Penguasaan Tanah'); H(ws, 1, 13, 3, 13, 'Kepadatan Penduduk (jiwa/km2)');
+  [['Tersedia', 3], ['Tidak Tersedia', 5], [TDA_LABEL, 7], ['Belum Ada HAT', 9], ['Ada HAT', 11]].forEach(([t, c]) => H(ws, 2, c, 2, c + 1, t));
+  for (let i = 0; i < 10; i++) H(ws, 3, 3 + i, 3, 3 + i, i % 2 ? 'Luas (%)' : 'Luas (Ha)');
   const n = d.rows.length, r0 = 4, r1 = 3 + n, rt = 4 + n, c = skCalc(d);
   const fx = (r, col, formula, result, f, b) => { const x = cell(ws, r, col, null, { b }); x.value = { formula, result }; x.numFmt = f; return x; };
   const inb = (r, col, v) => { const x = cell(ws, r, col, v); x.numFmt = '#,##0.00'; x.fill = YEL; };
+  const den = x => `(C${x}+E${x}+G${x})`;   // luas kabupaten/kota = Tersedia + Tidak Tersedia + Tidak Dapat Dianalisis
   d.rows.forEach((r, i) => {
     const x = r0 + i, src = `'${s1}'!G${3 + i}`;                   // sel Kepadatan di Tabel III-1 (baris data mulai 3)
     cell(ws, x, 1, i + 1, { ctr: 1 }); cell(ws, x, 2, r.k);
-    const fK = rawRng('WADMKC'), ex = fK && r.k !== '-' ? [[fK, `$B${x}`]] : null, fa = ex && ketSumF(0, ex), fb = ex && ketSumF(1, ex);
-    cell(ws, x, 3, fa ? FX(fa, r.a) : r.a, { num: 1 }); cell(ws, x, 4, FX(`IF((C${x}+E${x})=0,0,C${x}/(C${x}+E${x})*100)`, r.pa), { num: 1 });
-    cell(ws, x, 5, fb ? FX(fb, r.b) : r.b, { num: 1 }); cell(ws, x, 6, FX(`IF((C${x}+E${x})=0,0,E${x}/(C${x}+E${x})*100)`, r.pb), { num: 1 });
-    inb(x, 7, c.hb[i]); fx(x, 8, `IF(G${x}="","",G${x}/(C${x}+E${x})*100)`, c.pb[i] === null ? '' : c.pb[i], '#,##0.00');
-    inb(x, 9, c.hh[i]); fx(x, 10, `IF(I${x}="","",I${x}/(C${x}+E${x})*100)`, c.ph[i] === null ? '' : c.ph[i], '#,##0.00');
-    fx(x, 11, `IF(${src}="","",${src})`, c.kp[i] === null ? '' : c.kp[i], '#,##0');
+    const fK = rawRng('WADMKC'), ex = fK && r.k !== '-' ? [[fK, `$B${x}`]] : null, fa = ex && ketSumF(0, ex), fb = ex && ketSumF(1, ex), fu = ex && ketSumF(2, ex);
+    cell(ws, x, 3, fa ? FX(fa, r.a) : r.a, { num: 1 }); cell(ws, x, 4, FX(`IF(${den(x)}=0,0,C${x}/${den(x)}*100)`, r.pa), { num: 1 });
+    cell(ws, x, 5, fb ? FX(fb, r.b) : r.b, { num: 1 }); cell(ws, x, 6, FX(`IF(${den(x)}=0,0,E${x}/${den(x)}*100)`, r.pb), { num: 1 });
+    cell(ws, x, 7, fu ? FX(fu, r.u) : r.u, { num: 1 }); cell(ws, x, 8, FX(`IF(${den(x)}=0,0,G${x}/${den(x)}*100)`, r.pu), { num: 1 });
+    inb(x, 9, c.hb[i]); fx(x, 10, `IF(I${x}="","",I${x}/${den(x)}*100)`, c.pb[i] === null ? '' : c.pb[i], '#,##0.00');
+    inb(x, 11, c.hh[i]); fx(x, 12, `IF(K${x}="","",K${x}/${den(x)}*100)`, c.ph[i] === null ? '' : c.ph[i], '#,##0.00');
+    fx(x, 13, `IF(${src}="","",${src})`, c.kp[i] === null ? '' : c.kp[i], '#,##0');
   });
   cell(ws, rt, 1, d.wil, { b: 1, ctr: 1 }); cell(ws, rt, 2, null); ws.mergeCells(rt, 1, rt, 2);
-  cell(ws, rt, 3, FX(`SUM(C${r0}:C${r1})`, d.tot.a), { num: 1, b: 1 }); cell(ws, rt, 5, FX(`SUM(E${r0}:E${r1})`, d.tot.b), { num: 1, b: 1 });
-  cell(ws, rt, 4, FX(`IF((C${rt}+E${rt})=0,0,C${rt}/(C${rt}+E${rt})*100)`, d.tot.pa), { num: 1, b: 1 }); cell(ws, rt, 6, FX(`IF((C${rt}+E${rt})=0,0,E${rt}/(C${rt}+E${rt})*100)`, d.tot.pb), { num: 1, b: 1 });
-  fx(rt, 7, `IF(COUNT(G${r0}:G${r1})=0,"",SUM(G${r0}:G${r1}))`, c.tb === null ? '' : c.tb, '#,##0.00', 1);
-  fx(rt, 8, `IF(G${rt}="","",G${rt}/(C${rt}+E${rt})*100)`, c.tbp === null ? '' : c.tbp, '#,##0.00', 1);
-  fx(rt, 9, `IF(COUNT(I${r0}:I${r1})=0,"",SUM(I${r0}:I${r1}))`, c.th === null ? '' : c.th, '#,##0.00', 1);
-  fx(rt, 10, `IF(I${rt}="","",I${rt}/(C${rt}+E${rt})*100)`, c.thp === null ? '' : c.thp, '#,##0.00', 1);
+  cell(ws, rt, 3, FX(`SUM(C${r0}:C${r1})`, d.tot.a), { num: 1, b: 1 }); cell(ws, rt, 5, FX(`SUM(E${r0}:E${r1})`, d.tot.b), { num: 1, b: 1 }); cell(ws, rt, 7, FX(`SUM(G${r0}:G${r1})`, d.tot.u), { num: 1, b: 1 });
+  cell(ws, rt, 4, FX(`IF(${den(rt)}=0,0,C${rt}/${den(rt)}*100)`, d.tot.pa), { num: 1, b: 1 }); cell(ws, rt, 6, FX(`IF(${den(rt)}=0,0,E${rt}/${den(rt)}*100)`, d.tot.pb), { num: 1, b: 1 }); cell(ws, rt, 8, FX(`IF(${den(rt)}=0,0,G${rt}/${den(rt)}*100)`, d.tot.pu), { num: 1, b: 1 });
+  fx(rt, 9, `IF(COUNT(I${r0}:I${r1})=0,"",SUM(I${r0}:I${r1}))`, c.tb === null ? '' : c.tb, '#,##0.00', 1);
+  fx(rt, 10, `IF(I${rt}="","",I${rt}/${den(rt)}*100)`, c.tbp === null ? '' : c.tbp, '#,##0.00', 1);
+  fx(rt, 11, `IF(COUNT(K${r0}:K${r1})=0,"",SUM(K${r0}:K${r1}))`, c.th === null ? '' : c.th, '#,##0.00', 1);
+  fx(rt, 12, `IF(K${rt}="","",K${rt}/${den(rt)}*100)`, c.thp === null ? '' : c.thp, '#,##0.00', 1);
   const st = `'${s1}'!G${3 + n}`;
-  fx(rt, 11, `IF(${st}="","",${st})`, c.tkp === null ? '' : c.tkp, '#,##0', 1);
+  fx(rt, 13, `IF(${st}="","",${st})`, c.tkp === null ? '' : c.tkp, '#,##0', 1);
   ws.getCell(rt + 1, 1).value = 'Sel kuning (Belum Ada HAT / Ada HAT, Ha) belum ada datanya dan dapat diisi manual. Kepadatan Penduduk mengikuti sheet Tabel III-1.';
-  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; for (let k = 3; k <= 10; k++) ws.getColumn(k).width = 14; ws.getColumn(11).width = 20;
+  ws.getColumn(1).width = 6; ws.getColumn(2).width = 20; for (let k = 3; k <= 12; k++) ws.getColumn(k).width = 14; ws.getColumn(13).width = 20;
   const qq = `'${ws.name.replace(/'/g, "''")}'!`, cat = `${qq}$B$${r0}:$B$${r1}`, R = L => `${qq}$${L}$${r0}:$${L}$${r1}`, cats = d.rows.map(x => x.k);
   addXChart({ sheet: ws.name, type: 'bar', legend: 'b', from: { col: 2, row: rt + 2 }, ext: { w: ex.w, h: ex.h }, title: 'POTENSI SOSIAL EKONOMI ' + d.wil.toUpperCase() + ' TAHUN 2026',
     series: [{ name: 'Tersedia', cat, catVals: cats, val: R('C'), vals: d.rows.map(x => x.a), color: '#ffc000' },
-             { name: 'Ada HAT', cat, catVals: cats, val: R('I'), vals: c.hh.map(v => v || 0), color: NAVY },
-             { name: 'Kepadatan Penduduk (jiwa/km2)', cat, catVals: cats, val: R('K'), vals: c.kp.map(v => v || 0), color: '#c00000' }] });
+             { name: 'Ada HAT', cat, catVals: cats, val: R('K'), vals: c.hh.map(v => v || 0), color: NAVY },
+             { name: 'Kepadatan Penduduk (jiwa/km2)', cat, catVals: cats, val: R('M'), vals: c.kp.map(v => v || 0), color: '#c00000' }] });
 }
 
 // =====================================================================
@@ -1655,7 +1698,7 @@ document.addEventListener('input', e => {
 function excelGl(wb, ws, d) {
   const YEL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
   const s18 = (EXTRA.find(e => e.build === buildSK) || { tab: '29_Tabel_IV-18' }).tab, q = `'${s18}'!`;
-  const rt18 = 4 + d.rows.length, bel = `${q}G${rt18}`, kota = `(${q}C${rt18}+${q}E${rt18})`;   // total Belum Ada HAT dan luas wilayah di Tabel IV-18
+  const rt18 = 4 + d.rows.length, bel = `${q}I${rt18}`, kota = `(${q}C${rt18}+${q}E${rt18}+${q}G${rt18})`;   // total Belum Ada HAT dan luas wilayah di Tabel IV-18
   H(ws, 1, 1, 2, 1, 'No'); H(ws, 1, 2, 2, 2, 'Kabupaten/Kota'); H(ws, 1, 3, 1, 6, 'Galat Tanah Belum Terdaftar Hasil Unduhan Geo-KKP');
   ['Jumlah Bidang', 'Luas (Ha)', '% terhadap Tanah Belum Terdaftar', '% terhadap Luas ' + d.wil].forEach((t, i) => H(ws, 2, 3 + i, 2, 3 + i, t));
   const n = d.rows.length, r0 = 3, r1 = 2 + n, rt = 3 + n, c = glCalc(d);
