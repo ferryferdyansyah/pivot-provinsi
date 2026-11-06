@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NPGT Regional Jatim 2026 - Tabel Rekap & Excel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script>
+try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}
+</script>
+<link rel="stylesheet" href="css/style.css" />
+<!-- Library eksternal (perlu internet) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <img class="brand-logo" src="assets/logo-npgt-regional-2026-jawa-timur.svg" alt="NPGT Regional 2026 Jawa Timur" />
+  <h1>NPGT Regional Jatim 2026<small>Tabulasi per kabupaten/kota dari file Excel NPGT</small></h1>
+  <div class="top-actions">
+    <button id="dl" disabled>Download Excel</button>
+    <button id="theme" title="Ganti tema terang/gelap" aria-label="Ganti tema"></button>
+  </div>
+</header>
+
+<main>
+  <section class="intro" id="intro">
+    <h2>Mulai dari file Excel NPGT</h2>
+    <p>Semua diproses di browser Anda, tidak ada yang diunggah ke server.</p>
+  </section>
+
+  <section class="steps" aria-label="Langkah input data">
+    <div class="card dz" id="drop" role="button" tabindex="0" data-state="idle">
+      <span class="step-no">1</span>
+      <svg class="dz-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <b class="dz-t" data-t="Klik atau seret file Excel NPGT (.xlsx)">Klik atau seret file Excel NPGT (.xlsx)</b>
+      <small class="dz-s" data-s="Boleh file besar (ratusan ribu baris), dibaca bertahap lalu digabung per kabupaten/kota.">Boleh file besar (ratusan ribu baris), dibaca bertahap lalu digabung per kabupaten/kota.</small>
+      <input type="file" id="file" accept=".xlsx,.zip" hidden />
+    </div>
+
+    <div class="card dz" id="drop2" role="button" tabindex="0" data-state="idle" data-locked="1">
+      <span class="step-no">2</span><span class="opt">Opsional</span>
+      <svg class="dz-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4V7zm8 4v10M4 7l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <b class="dz-t" data-t="ZIP HAT (hak atas tanah)">ZIP HAT (hak atas tanah)</b>
+      <small class="dz-s" data-s="Kolom TIPEHAK, LUAS_HA, WADMKK. Unggah setelah file utama. Mengisi Tabel IV-18 dan III-9.">Kolom TIPEHAK, LUAS_HA, WADMKK. Unggah setelah file utama. Mengisi Tabel IV-18 dan III-9.</small>
+      <input type="file" id="file2" accept=".zip" hidden />
+    </div>
+
+    <div class="card" id="settings">
+      <span class="step-no">3</span><span class="opt">Pengaturan</span>
+      <b class="set-t">Tahun penggunaan tanah</b>
+      <!-- #tahunbox dan #tahunkab diisi oleh js/tahun.js -->
+    </div>
+  </section>
+
+  <div id="statusbar" class="statusbar" data-kind="info">
+    <span class="st-ic" aria-hidden="true"></span>
+    <span id="status" role="status" aria-live="polite">Belum ada file. Mulai dengan langkah 1.</span>
+  </div>
+
+  <section id="empty" class="card empty">
+    <h3>Apa yang akan Anda dapatkan?</h3>
+    <ul>
+      <li><b>Puluhan tabel &amp; grafik</b> (Bab III dan IV) yang terisi otomatis dari kolom penggunaan tanah, RDTR/RTRW, HAT, dan karbon.</li>
+      <li><b>Satu file Excel</b> lengkap dengan rumus yang menunjuk ke sheet Raw Data, jadi bisa ditelusuri.</li>
+      <li><b>Tahun penggunaan tanah lama per kabupaten/kota</b> yang bisa berbeda (2015, 2020, dst.) dan dipakai untuk laju per tahun.</li>
+    </ul>
+  </section>
+
+  <section id="summary" class="summary" hidden></section>
+
+  <section id="results">
+    <div class="tabtools">
+      <div id="tabfilter" class="chips" role="tablist" aria-label="Kelompok tabel"></div>
+      <div class="navbtns"><button id="prevtab" class="ghost" aria-label="Tabel sebelumnya">‹</button><button id="nexttab" class="ghost" aria-label="Tabel berikutnya">›</button></div>
+    </div>
+    <div id="tabs"></div>
+    <h3 id="paneltitle" class="paneltitle"></h3>
+    <div id="panels"></div>
+  </section>
+</main>
+
+<!-- Animasi loading -->
+<div id="busy" class="busy" hidden role="dialog" aria-modal="true" aria-labelledby="busy-t">
+  <div class="busy-card">
+    <div class="spin" aria-hidden="true"></div>
+    <h3 id="busy-t">Memproses…</h3>
+    <p id="busy-d" class="busy-d"></p>
+    <div class="bar-track"><i id="busy-bar"></i></div>
+    <ol id="busy-steps" class="busy-steps"></ol>
+    <small id="busy-time">0 dtk</small>
+  </div>
+</div>
+
+<!-- Script buatan sendiri. URUTAN PENTING: config dulu, main terakhir -->
+<script src="js/config.js"></script>
+<script src="js/xlsx-stream.js"></script>
+<script src="js/xlnative.js"></script>
+<script src="js/dbf.js"></script>
+<script src="js/aggregate.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/render.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/extra.js"></script>
+<script src="js/sheets.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+<script src="js/hat.js"></script>
+<script src="js/tahun.js"></script>
+</body>
+</html>
