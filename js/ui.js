@@ -36,7 +36,7 @@ const UI = {
 (() => {
     const bar = $('statusbar'), st = $('status');
     const kind = t => /^(Gagal|Kolom HAT|File \.dbf)|harus lebih kecil/i.test(t) ? 'error'
-        : /Peringatan|Unggah file utama/i.test(t) ? 'warn'
+        : /Peringatan|Unggah file (utama|PDF)/i.test(t) ? 'warn'
         : /^(Membaca|Menyiapkan|Memproses)/i.test(t) ? 'busy'
         : /baris|terisi|diubah|diisi|dikembalikan|^Tahun lama/i.test(t) ? 'ok' : 'info';
     new MutationObserver(() => { bar.dataset.kind = kind(st.textContent) }).observe(st, { childList: true, characterData: true, subtree: true });

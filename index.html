@@ -15,6 +15,7 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 <header class="top">
@@ -60,11 +61,26 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
   <section class="card bps" id="bps">
     <div class="bps-head">
       <span class="step-no">4</span><span class="opt">Opsional</span>
-      <div><b>Isi data BPS dari gambar</b>
-        <p>Unggah, seret, atau tempel (Ctrl+V) screenshot tabel BPS. Angkanya dibaca otomatis, lalu Anda memilih mau diletakkan di Tabel III-1 sampai III-5. Unggah file Excel utama lebih dulu.</p></div>
-      <button id="bps-pick" class="ghost">Pilih gambar</button>
-      <input type="file" id="bps-file" accept="image/*" hidden />
+      <div><b>Isi Tabel III-1 sampai III-5 dari PDF BPS</b>
+        <p>Seret file PDF BPS (mis. “Provinsi … Dalam Angka”), ketik nomor halaman tabelnya, lalu klik Baca &amp; isi tabel. Angkanya dibaca otomatis dari teks PDF (tanpa OCR) dan diperiksa terhadap baris total. Unggah file Excel utama lebih dulu.</p></div>
     </div>
+    <div class="card dz" id="drop3" role="button" tabindex="0" data-state="idle">
+      <svg class="dz-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zm0 0v5h5M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <b class="dz-t" data-t="Klik atau seret file PDF BPS (.pdf)">Klik atau seret file PDF BPS (.pdf)</b>
+      <small class="dz-s" data-s="Satu PDF untuk semua tabel. Diproses di browser Anda, tidak diunggah ke server.">Satu PDF untuk semua tabel. Diproses di browser Anda, tidak diunggah ke server.</small>
+      <input type="file" id="bps-pdf" accept=".pdf,application/pdf" hidden />
+    </div>
+    <div class="pgmode" role="radiogroup" aria-label="Jenis nomor halaman">
+      <label><input type="radio" name="pgmode" value="cetak" checked> Nomor halaman sesuai cetakan (seperti di daftar isi)</label>
+      <label><input type="radio" name="pgmode" value="pdf"> Nomor halaman file PDF</label>
+    </div>
+    <div class="pgform">
+      <label>Tabel III-1 &amp; III-2 · Jumlah penduduk, laju pertumbuhan, rasio jenis kelamin<input type="text" id="pg-pop" placeholder="mis. 75-80" autocomplete="off"></label>
+      <label>Tabel III-3 · Status pekerjaan utama menurut jenis kelamin<input type="text" id="pg-pk" placeholder="mis. 96" autocomplete="off"></label>
+      <label>Tabel III-4 · PDRB atas dasar harga konstan (ADHK)<input type="text" id="pg-adhk" placeholder="mis. 615-621" autocomplete="off"></label>
+      <label>Tabel III-5 · PDRB atas dasar harga berlaku (ADHB)<input type="text" id="pg-adhb" placeholder="mis. 608-614" autocomplete="off"></label>
+    </div>
+    <div class="pgact"><button id="bps-run" disabled>Baca &amp; isi tabel</button><small>Kosongkan kolom tabel yang tidak ingin diisi. Rentang ditulis 75-80, beberapa halaman dipisah koma.</small></div>
     <div id="bps-review" hidden></div>
   </section>
 
@@ -119,10 +135,10 @@ try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(pre
 <script src="js/extra.js"></script>
 <script src="js/sheets.js"></script>
 <script src="js/ui.js"></script>
-<script src="js/bps-parse.js"></script>
+<script src="js/bps-pdf-parse.js"></script>
 <script src="js/main.js"></script>
 <script src="js/hat.js"></script>
 <script src="js/tahun.js"></script>
-<script src="js/bps-image.js"></script>
+<script src="js/bps-pdf.js"></script>
 </body>
 </html>

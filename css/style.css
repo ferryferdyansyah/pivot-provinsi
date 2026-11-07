@@ -201,3 +201,17 @@ td.idx{color:var(--mut);text-align:right;font-variant-numeric:tabular-nums}
 .bps-foot{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--mut)}
 .bps details{margin-top:10px;font-size:12px;color:var(--mut)}.bps pre{max-height:220px;overflow:auto;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:8px}
 @media(max-width:640px){.bps-head{padding-right:0}.bps-thumb{max-width:100%}}
+
+/* ===== Langkah 4: isi dari PDF BPS ===== */
+.bps .dz{margin:14px 0 10px;padding:16px 18px;border-radius:12px;box-shadow:none}
+.pgmode{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--tx);margin:6px 0 2px}
+.pgmode label{display:flex;align-items:center;gap:6px}
+.pgform{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin:12px 0}
+.pgform label{display:grid;gap:5px;font-size:12px;color:var(--mut);line-height:1.4}
+.pgform input[type=text]{padding:9px 11px;border:1px solid var(--bd);border-radius:9px;background:var(--bg);color:var(--tx);font:inherit;font-size:14px}
+.pgact{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.pgact small{color:var(--mut);font-size:12px}
+.rp{padding:9px 12px;border:1px solid var(--bd);border-left-width:4px;border-radius:9px;margin:8px 0;font-size:13px;line-height:1.5}
+.rp.ok{border-left-color:var(--ok)}.rp.warn{border-left-color:var(--warn)}.rp.bad{border-left-color:var(--bad)}
+.rp small{display:block;color:var(--mut);margin-top:2px}
+.rp-sel{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+.rp-sel label{display:grid;gap:4px;font-size:12px;color:var(--mut)}.rp-hint{flex-basis:100%;color:var(--mut);font-size:12px}
